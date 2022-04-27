@@ -10,14 +10,22 @@ import (
 )
 
 var (
-	addr             = flag.String("addr", ":8080", "http service address")
-	nickToConnection = map[string]string{}
+	port             = flag.String("p", "7776", "http service address")
+	operatorpassword = flag.String("o", "pw", "password")
+	nickInUse        = map[string]bool{}
 )
+
+type IRCConn struct {
+	User     string
+	Nick     string
+	Conn     net.Conn
+	Welcomed bool
+}
 
 func main() {
 	flag.Parse()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:8080")
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", *port))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,81 +43,96 @@ func main() {
 				return
 			}
 
-			server_address := conn.LocalAddr().String()
-
-			go func(c net.Conn) {
-				defer func() {
-					c.Close()
-				}()
-
-				client_address := c.RemoteAddr().String()
-
-				scanner := bufio.NewScanner(c)
-				scanner.Split(bufio.ScanLines)
-
-				for scanner.Scan() {
-					incoming_message := scanner.Text()
-					log.Println(incoming_message)
-					split_message := strings.Fields(incoming_message)
-
-					if len(split_message) == 0 {
-						continue
-					}
-
-					var prefix string
-					if strings.HasPrefix(split_message[0], ":") {
-						prefix = split_message[0]
-						log.Printf("Prefix %s\n", prefix)
-						split_message = split_message[1:]
-					}
-
-					command := split_message[0]
-					params := split_message[1:]
-
-					switch command {
-					case "NICK":
-						nick := params[0]
-						log.Printf("NICK for connection %s is %s\n", client_address, nick)
-
-						val, ok := nickToConnection[nick]
-						if !ok {
-							nickToConnection[nick] = client_address
-						} else {
-							if val == client_address {
-								log.Println("IGNORING REPEAT NICK")
-							} else {
-								msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use.\r\n",
-									server_address, nick)
-
-								log.Printf(msg)
-								_, err = conn.Write([]byte(msg))
-								if err != nil {
-									log.Fatal(err)
-								}
-							}
-						}
-					case "USER":
-						msg := fmt.Sprintf(
-							":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
-							server_address, params[0], params[0], params[0], client_address)
-
-						log.Printf(msg)
-						_, err = conn.Write([]byte(msg))
-						if err != nil {
-							log.Fatal(err)
-						}
-					default:
-						log.Println("Command not recognized")
-					}
-
-				}
-				err = scanner.Err()
-				if err != nil {
-					log.Printf("ERR: %v\n", err)
-				}
-			}(conn)
+			go handleConnection(&IRCConn{Conn: conn})
 		}
 	}()
 
 	<-done
+}
+
+func handleConnection(ic *IRCConn) {
+	defer func() {
+		ic.Conn.Close()
+	}()
+
+	client_address := ic.Conn.RemoteAddr().String()
+
+	scanner := bufio.NewScanner(ic.Conn)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		incoming_message := scanner.Text()
+		log.Printf("Incoming message: %s", incoming_message)
+		split_message := strings.Fields(incoming_message)
+
+		if len(split_message) == 0 {
+			continue
+		}
+
+		var prefix string
+		if strings.HasPrefix(split_message[0], ":") {
+			prefix = split_message[0]
+			log.Printf("Prefix %s\n", prefix)
+			split_message = split_message[1:]
+		}
+
+		command := split_message[0]
+		params := split_message[1:]
+
+		switch command {
+		case "NICK":
+			nick := params[0]
+			log.Printf("NICK for connection %s is %s\n", client_address, nick)
+
+			_, ok := nickInUse[nick]
+			if nick != ic.Nick && ok {
+				msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use.\r\n",
+					ic.Conn.LocalAddr(), nick)
+				log.Printf(msg)
+				_, err := ic.Conn.Write([]byte(msg))
+				if err != nil {
+					log.Fatal(err)
+				}
+				break
+			}
+
+			nickInUse[nick] = true
+			ic.Nick = nick
+			if !ic.Welcomed && ic.User != "" {
+				msg := fmt.Sprintf(
+					":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
+					ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.Nick, client_address)
+
+				log.Printf(msg)
+				_, err := ic.Conn.Write([]byte(msg))
+				if err != nil {
+					log.Fatal(err)
+				}
+				ic.Welcomed = true
+			}
+		case "USER":
+			username := params[3]
+			ic.User = username
+
+			if !ic.Welcomed && ic.Nick != "" {
+				msg := fmt.Sprintf(
+					":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
+					ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.Nick, client_address)
+
+				log.Printf(msg)
+				_, err := ic.Conn.Write([]byte(msg))
+				if err != nil {
+					log.Fatal(err)
+				}
+				ic.Welcomed = true
+			}
+		default:
+			log.Println("Command not recognized")
+		}
+
+	}
+	err := scanner.Err()
+	if err != nil {
+		log.Printf("ERR: %v\n", err)
+	}
 }
