@@ -7,6 +7,13 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
+)
+
+const (
+	VERSION   = "1.0.0"
+	RPL_MOTD  = ":hostname 422 user1 :MOTD File is missing\r\n"
+	RPL_LUSER = ":hostname 251 user1 :There are 1 users and 0 services on 1 servers\r\n:hostname 252 user1 0 :operator(s) online\r\n:hostname 253 user1 0 :unknown connection(s)\r\n:hostname 254 user1 0 :channels formed\r\n:hostname 255 user1 :I have 1 clients and 1 servers\r\n"
 )
 
 var (
@@ -43,7 +50,7 @@ func main() {
 				return
 			}
 
-			go handleConnection(&IRCConn{Conn: conn})
+			go handleConnection(&IRCConn{Conn: conn, Nick: "*"})
 		}
 	}()
 
@@ -88,6 +95,8 @@ func handleConnection(ic *IRCConn) {
 			handleUser(ic, params)
 		case "QUIT":
 			handleQuit(ic, params)
+		case "PRIVMSG":
+			handlePrivMsg(ic, params)
 		default:
 			log.Println("Command not recognized")
 		}
@@ -99,22 +108,30 @@ func handleConnection(ic *IRCConn) {
 	}
 }
 
+func handlePrivMsg(ic *IRCConn, params string) {
+	validateWelcomeAndParameters("PRIVMSG", params, 2, ic)
+	// TODO handle PRIVMSG
+}
+
 func handleQuit(ic *IRCConn, params string) {
-	if !validateParameters("NICK", params, 0, ic) {
+	if !validateWelcomeAndParameters("QUIT", params, 0, ic) {
 		return
 	}
 
 	quitMessage := "Client Quit"
 	if params != "" {
-		quitMessage = params
+		quitMessage = removePrefix(params)
 	}
 
-	msg := fmt.Sprintf("Closing Link: %s %s", ic.Conn.RemoteAddr(), quitMessage)
+	msg := fmt.Sprintf("ERROR :Closing Link: %s (%s)\r\n", ic.Conn.RemoteAddr(), quitMessage)
 	_, err := ic.Conn.Write([]byte(msg))
 	if err != nil {
 		log.Fatal(err)
 	}
-	// TODO close gracefully
+
+	delete(nickInUse, ic.Nick)
+
+	// TODO close gracefully, cleaup
 	err = ic.Conn.Close()
 	if err != nil {
 		log.Println(err)
@@ -122,21 +139,26 @@ func handleQuit(ic *IRCConn, params string) {
 }
 
 func handleNick(ic *IRCConn, params string) {
-	if !validateParameters("NICK", params, 1, ic) {
+	if !validateWelcomeAndParameters("NICK", params, 1, ic) {
 		return
 	}
 
+	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
 
 	_, ok := nickInUse[nick]
 	if nick != ic.Nick && ok {
-		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use.\r\n",
+		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
 			ic.Conn.LocalAddr(), nick)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Fatal(err)
 		}
 		return
+	}
+
+	if prevNick != "*" {
+		delete(nickInUse, prevNick)
 	}
 
 	nickInUse[nick] = true
@@ -146,7 +168,19 @@ func handleNick(ic *IRCConn, params string) {
 }
 
 func handleUser(ic *IRCConn, params string) {
-	if !validateParameters("USER", params, 4, ic) {
+	if !validateWelcomeAndParameters("USER", params, 4, ic) {
+		return
+	}
+
+	if ic.User != "" {
+		msg := fmt.Sprintf(
+			":%s 463 :You may not reregister\r\n",
+			ic.Conn.LocalAddr())
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		return
 	}
 
@@ -156,7 +190,7 @@ func handleUser(ic *IRCConn, params string) {
 }
 
 func checkAndSendWelcome(ic *IRCConn) {
-	if !ic.Welcomed && ic.Nick != "" && ic.User != "" {
+	if !ic.Welcomed && ic.Nick != "*" && ic.User != "" {
 		msg := fmt.Sprintf(
 			":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
 			ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, ic.Conn.RemoteAddr().String())
@@ -167,15 +201,59 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 		ic.Welcomed = true
+
+		// RPL_YOURHOST
+		msg = fmt.Sprintf(
+			":%s 002 %s :Your host is %s, running version %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION)
+
+		log.Printf(msg)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// RPL_CREATED
+		msg = fmt.Sprintf(
+			":%s 003 %s :This server was created %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, time.Now().String())
+
+		log.Printf(msg)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// RPL_MYINFO
+		msg = fmt.Sprintf(
+			":%s 004 %s %s %s %s %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION, "ao", "mtov")
+
+		log.Printf(msg)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Printf(RPL_LUSER)
+		_, err = ic.Conn.Write([]byte(RPL_LUSER))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Printf(RPL_MOTD)
+		_, err = ic.Conn.Write([]byte(RPL_MOTD))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
-func validateParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
-	paramVals := strings.Fields(params)
-	if len(paramVals) < expectedNumParams {
+func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
+	if command != "NICK" && command != "USER" && !ic.Welcomed {
 		msg := fmt.Sprintf(
-			":%s 461 %s :Not enough parameters\r\n",
-			ic.Conn.LocalAddr(), command)
+			":%s 451 %s :You have not registered\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
 
 		log.Printf(msg)
 		_, err := ic.Conn.Write([]byte(msg))
@@ -184,5 +262,36 @@ func validateParameters(command, params string, expectedNumParams int, ic *IRCCo
 		}
 		return false
 	}
-	return true
+
+	paramVals := strings.Fields(params)
+	if len(paramVals) >= expectedNumParams {
+		return true
+	}
+
+	var msg string
+	if command == "NICK" {
+		msg = fmt.Sprintf(
+			":%s 431 %s :No nickname given\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
+	} else {
+		msg = fmt.Sprintf(
+			":%s 461 %s %s :Not enough parameters\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, command)
+	}
+
+	log.Printf(msg)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return false
+}
+
+func removePrefix(s string) string {
+	split := strings.SplitAfterN(s, ":", 2)
+	if len(split) == 1 {
+		return split[0]
+	} else {
+		return split[1]
+	}
 }
