@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-var addr = flag.String("addr", ":8080", "http service address")
+var (
+	addr             = flag.String("addr", ":8080", "http service address")
+	nickToConnection = map[string]string{}
+)
 
 func main() {
 	flag.Parse()
@@ -31,10 +34,14 @@ func main() {
 				return
 			}
 
+			server_address := conn.LocalAddr().String()
+
 			go func(c net.Conn) {
 				defer func() {
 					conn.Close()
 				}()
+
+				client_address := c.RemoteAddr().String()
 
 				scanner := bufio.NewScanner(conn)
 				scanner.Split(bufio.ScanLines)
@@ -58,11 +65,24 @@ func main() {
 
 					switch command {
 					case "NICK":
-						log.Printf("NICK for connection %s is %s\n", conn.RemoteAddr(), params[0])
+						nick := params[0]
+						log.Printf("NICK for connection %s is %s\n", client_address, nick)
+
+						val, ok := nickToConnection[nick]
+						if !ok {
+							nickToConnection[nick] = client_address
+						} else {
+							if val == client_address {
+								log.Println("IGNORING REPEAT NICK")
+							} else {
+								log.Printf(":%s 433 * %s :Nickname is already in use.\r\n",
+									server_address, nick)
+							}
+						}
 					case "USER":
 						log.Printf(
-							":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\n",
-							conn.LocalAddr(), params[0], params[0], params[0], conn.RemoteAddr())
+							":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
+							server_address, params[0], params[0], params[0], client_address)
 					default:
 						log.Println("Command not recognized")
 					}

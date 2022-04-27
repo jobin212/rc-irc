@@ -19,6 +19,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	_, err = conn.Write([]byte("NICK jobin\r\n"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	_, err = conn.Write([]byte("USER jobin * * :jobin212\r\n"))
 	if err != nil {
 		log.Fatal(err)
