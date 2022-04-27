@@ -1,0 +1,5 @@
+message of the day!
+Welcome
+to my 
+~~cool~~
+IRC Server!
