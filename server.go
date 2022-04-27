@@ -86,6 +86,8 @@ func handleConnection(ic *IRCConn) {
 			handleNick(ic, params)
 		case "USER":
 			handleUser(ic, params)
+		case "QUIT":
+			handleQuit(ic, params)
 		default:
 			log.Println("Command not recognized")
 		}
@@ -94,6 +96,28 @@ func handleConnection(ic *IRCConn) {
 	err := scanner.Err()
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
+	}
+}
+
+func handleQuit(ic *IRCConn, params string) {
+	if !validateParameters("NICK", params, 0, ic) {
+		return
+	}
+
+	quitMessage := "Client Quit"
+	if params != "" {
+		quitMessage = params
+	}
+
+	msg := fmt.Sprintf("Closing Link: %s %s", ic.Conn.RemoteAddr(), quitMessage)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+	// TODO close gracefully
+	err = ic.Conn.Close()
+	if err != nil {
+		log.Println(err)
 	}
 }
 
