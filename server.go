@@ -79,7 +79,7 @@ func main() {
 								msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use.\r\n",
 									server_address, nick)
 
-								log.Println(msg)
+								log.Printf(msg)
 								_, err = conn.Write([]byte(msg))
 								if err != nil {
 									log.Fatal(err)
@@ -91,7 +91,7 @@ func main() {
 							":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
 							server_address, params[0], params[0], params[0], client_address)
 
-						log.Println(msg)
+						log.Printf(msg)
 						_, err = conn.Write([]byte(msg))
 						if err != nil {
 							log.Fatal(err)

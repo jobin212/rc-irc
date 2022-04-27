@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
+	"os"
 )
 
 func main() {
@@ -36,14 +38,19 @@ func main() {
 		}
 	}(conn)
 
-	_, err = conn.Write([]byte("NICK jobin\r\n"))
-	if err != nil {
-		log.Fatal(err)
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := scanner.Text()
+		irc_line := fmt.Sprintf("%s\r\n", line)
+		_, err = conn.Write([]byte(irc_line))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	_, err = conn.Write([]byte("USER jobin * * :jobin212\r\n"))
+	err = scanner.Err()
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("ERR: %v\n", err)
 	}
 
 	<-done
