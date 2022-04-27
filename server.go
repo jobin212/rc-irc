@@ -56,8 +56,10 @@ func main() {
 						continue
 					}
 
+					var prefix string
 					if strings.HasPrefix(split_message[0], ":") {
-						log.Printf("Prefix %s\n", split_message[0])
+						prefix = split_message[0]
+						log.Printf("Prefix %s\n", prefix)
 						split_message = split_message[1:]
 					}
 
