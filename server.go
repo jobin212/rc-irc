@@ -95,6 +95,8 @@ func handleConnection(ic *IRCConn) {
 			handleUser(ic, params)
 		case "QUIT":
 			handleQuit(ic, params)
+		case "PRIVMSG":
+			handlePrivMsg(ic, params)
 		default:
 			log.Println("Command not recognized")
 		}
@@ -104,6 +106,11 @@ func handleConnection(ic *IRCConn) {
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
 	}
+}
+
+func handlePrivMsg(ic *IRCConn, params string) {
+	validateWelcomeAndParameters("PRIVMSG", params, 2, ic)
+	// TODO handle PRIVMSG
 }
 
 func handleQuit(ic *IRCConn, params string) {
@@ -237,8 +244,8 @@ func checkAndSendWelcome(ic *IRCConn) {
 func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
 	if command != "NICK" && command != "USER" && !ic.Welcomed {
 		msg := fmt.Sprintf(
-			":%s 451 :You have not registered\r\n",
-			ic.Conn.LocalAddr())
+			":%s 451 %s :You have not registered\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
 
 		log.Printf(msg)
 		_, err := ic.Conn.Write([]byte(msg))
