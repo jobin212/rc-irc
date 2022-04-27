@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
@@ -105,6 +106,8 @@ func handleConnection(ic *IRCConn) {
 			handlePing(ic, params)
 		case "PONG":
 			break
+		case "MOTD":
+			handleMotd(ic, params)
 		default:
 			log.Println("Command not recognized")
 		}
@@ -116,7 +119,44 @@ func handleConnection(ic *IRCConn) {
 	}
 }
 
+func handleMotd(ic *IRCConn, params string) {
+	dat, err := os.ReadFile("./motd.txt")
+	if err != nil {
+		msg := fmt.Sprintf(":%s 422 %s :MOTD File is missing\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	motd := string(dat)
+
+	motdLines := strings.FieldsFunc(motd, func(c rune) bool { return c == '\n' || c == '\r' })
+
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf(":%s 375 %s :- %s Message of the day - \r\n",
+		ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr()))
+
+	for _, motdLine := range motdLines {
+		log.Println(motdLine)
+		sb.WriteString(fmt.Sprintf(":%s 372 %s :- %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, string(motdLine)))
+	}
+
+	sb.WriteString(fmt.Sprintf(":%s 376 %s :End of MOTD command\r\n",
+		ic.Conn.LocalAddr(), ic.Nick))
+
+	_, err = ic.Conn.Write([]byte(sb.String()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return
+}
+
 func handlePing(ic *IRCConn, params string) {
+	// TODO validate welcome?
 	// TODO update ping to update connection lifetime?
 	msg := fmt.Sprintf("PONG %s\r\n", ic.Conn.LocalAddr().String())
 	_, err := ic.Conn.Write([]byte(msg))
