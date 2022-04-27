@@ -120,10 +120,10 @@ func handleQuit(ic *IRCConn, params string) {
 
 	quitMessage := "Client Quit"
 	if params != "" {
-		quitMessage = params
+		quitMessage = removePrefix(params)
 	}
 
-	msg := fmt.Sprintf("Closing Link: %s %s", ic.Conn.RemoteAddr(), quitMessage)
+	msg := fmt.Sprintf("ERROR :Closing Link: %s (%s)\r\n", ic.Conn.RemoteAddr(), quitMessage)
 	_, err := ic.Conn.Write([]byte(msg))
 	if err != nil {
 		log.Fatal(err)
@@ -227,17 +227,17 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 
-		log.Printf(RPL_LUSER)
-		_, err = ic.Conn.Write([]byte(RPL_LUSER))
-		if err != nil {
-			log.Fatal(err)
-		}
+		// log.Printf(RPL_LUSER)
+		// _, err = ic.Conn.Write([]byte(RPL_LUSER))
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
 
-		log.Printf(RPL_MOTD)
-		_, err = ic.Conn.Write([]byte(RPL_MOTD))
-		if err != nil {
-			log.Fatal(err)
-		}
+		// log.Printf(RPL_MOTD)
+		// _, err = ic.Conn.Write([]byte(RPL_MOTD))
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
 	}
 }
 
@@ -277,4 +277,13 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 		log.Fatal(err)
 	}
 	return false
+}
+
+func removePrefix(s string) string {
+	split := strings.SplitAfterN(s, ":", 2)
+	if len(split) == 1 {
+		return split[0]
+	} else {
+		return split[1]
+	}
 }
