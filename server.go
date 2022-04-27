@@ -227,17 +227,17 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 
-		// log.Printf(RPL_LUSER)
-		// _, err = ic.Conn.Write([]byte(RPL_LUSER))
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
+		log.Printf(RPL_LUSER)
+		_, err = ic.Conn.Write([]byte(RPL_LUSER))
+		if err != nil {
+			log.Fatal(err)
+		}
 
-		// log.Printf(RPL_MOTD)
-		// _, err = ic.Conn.Write([]byte(RPL_MOTD))
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
+		log.Printf(RPL_MOTD)
+		_, err = ic.Conn.Write([]byte(RPL_MOTD))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
