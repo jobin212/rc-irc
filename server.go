@@ -111,6 +111,8 @@ func handleConnection(ic *IRCConn) {
 			break
 		case "MOTD":
 			handleMotd(ic, params)
+		case "NOTICE":
+			handleNotice(ic, params)
 		default:
 			log.Println("Command not recognized")
 		}
@@ -120,6 +122,36 @@ func handleConnection(ic *IRCConn) {
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
 	}
+}
+
+func handleNotice(ic *IRCConn, params string) {
+	if !ic.Welcomed {
+		return
+	}
+
+	splitParams := strings.SplitAfterN(params, " ", 2)
+	if len(splitParams) < 2 {
+		return
+	}
+	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
+
+	// get connection from targetNick
+	ntcMtx.Lock()
+	recipientIc, ok := nickToConn[targetNick]
+	ntcMtx.Unlock()
+
+	if !ok {
+		return
+	}
+
+	msg := fmt.Sprintf(
+		":%s!%s@%s NOTICE %s %s\r\n",
+		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
+	_, err := recipientIc.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 }
 
 func handleMotd(ic *IRCConn, params string) {
@@ -169,7 +201,9 @@ func handlePing(ic *IRCConn, params string) {
 }
 
 func handlePrivMsg(ic *IRCConn, params string) {
-	validateWelcomeAndParameters("PRIVMSG", params, 2, ic)
+	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic) {
+		return
+	}
 
 	splitParams := strings.SplitAfterN(params, " ", 2)
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
@@ -181,7 +215,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 
 	if !ok {
 		// RETURN ERR_NOSUCHNICK, 401?
-		msg := fmt.Sprintf(":%s 401 %s :No such nick/channel", ic.Conn.LocalAddr(), targetNick)
+		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Println("error sending nosuchnick reply")
@@ -386,6 +420,14 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 	if command == "NICK" {
 		msg = fmt.Sprintf(
 			":%s 431 %s :No nickname given\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
+	} else if command == "PRIVMSG" && len(paramVals) == 0 {
+		msg = fmt.Sprintf(
+			":%s 411 %s :No recipient given (%s)\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, command)
+	} else if command == "PRIVMSG" && len(paramVals) == 1 {
+		msg = fmt.Sprintf(
+			":%s 412 %s :No text to send\r\n",
 			ic.Conn.LocalAddr(), ic.Nick)
 	} else {
 		msg = fmt.Sprintf(
