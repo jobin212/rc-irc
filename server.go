@@ -150,6 +150,18 @@ func handleUser(ic *IRCConn, params string) {
 		return
 	}
 
+	if ic.User != "" {
+		msg := fmt.Sprintf(
+			":%s 463 :You may not reregister\r\n",
+			ic.Conn.LocalAddr())
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return
+	}
+
 	ic.User = strings.SplitN(params, " ", 2)[0]
 
 	checkAndSendWelcome(ic)
