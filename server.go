@@ -128,6 +128,9 @@ func handleQuit(ic *IRCConn, params string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	delete(nickInUse, ic.Nick)
+
 	// TODO close gracefully, cleaup
 	err = ic.Conn.Close()
 	if err != nil {
@@ -140,6 +143,7 @@ func handleNick(ic *IRCConn, params string) {
 		return
 	}
 
+	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
 
 	_, ok := nickInUse[nick]
@@ -151,6 +155,10 @@ func handleNick(ic *IRCConn, params string) {
 			log.Fatal(err)
 		}
 		return
+	}
+
+	if prevNick != "*" {
+		delete(nickInUse, prevNick)
 	}
 
 	nickInUse[nick] = true
