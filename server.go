@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	VERSION = "1.0.0"
+	VERSION   = "1.0.0"
+	RPL_MOTD  = ":hostname 422 user1 :MOTD File is missing\r\n"
+	RPL_LUSER = ":hostname 251 user1 :There are 1 users and 0 services on 1 servers\r\n:hostname 252 user1 0 :operator(s) online\r\n:hostname 253 user1 0 :unknown connection(s)\r\n:hostname 254 user1 0 :channels formed\r\n:hostname 255 user1 :I have 1 clients and 1 servers\r\n"
 )
 
 var (
@@ -48,7 +50,7 @@ func main() {
 				return
 			}
 
-			go handleConnection(&IRCConn{Conn: conn})
+			go handleConnection(&IRCConn{Conn: conn, Nick: "*"})
 		}
 	}()
 
@@ -173,7 +175,7 @@ func handleUser(ic *IRCConn, params string) {
 }
 
 func checkAndSendWelcome(ic *IRCConn) {
-	if !ic.Welcomed && ic.Nick != "" && ic.User != "" {
+	if !ic.Welcomed && ic.Nick != "*" && ic.User != "" {
 		msg := fmt.Sprintf(
 			":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
 			ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, ic.Conn.RemoteAddr().String())
@@ -217,6 +219,18 @@ func checkAndSendWelcome(ic *IRCConn) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		log.Printf(RPL_LUSER)
+		_, err = ic.Conn.Write([]byte(RPL_LUSER))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Printf(RPL_MOTD)
+		_, err = ic.Conn.Write([]byte(RPL_MOTD))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -242,12 +256,12 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 	var msg string
 	if command == "NICK" {
 		msg = fmt.Sprintf(
-			":%s 431 :No nickname given\r\n",
-			ic.Conn.LocalAddr())
+			":%s 431 %s :No nickname given\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
 	} else {
 		msg = fmt.Sprintf(
-			":%s 461 %s :Not enough parameters\r\n",
-			ic.Conn.LocalAddr(), command)
+			":%s 461 %s %s :Not enough parameters\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, command)
 	}
 
 	log.Printf(msg)
