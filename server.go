@@ -38,12 +38,12 @@ func main() {
 
 			go func(c net.Conn) {
 				defer func() {
-					conn.Close()
+					c.Close()
 				}()
 
 				client_address := c.RemoteAddr().String()
 
-				scanner := bufio.NewScanner(conn)
+				scanner := bufio.NewScanner(c)
 				scanner.Split(bufio.ScanLines)
 
 				for scanner.Scan() {
