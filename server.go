@@ -11,9 +11,13 @@ import (
 )
 
 const (
-	VERSION   = "1.0.0"
-	RPL_MOTD  = ":hostname 422 user1 :MOTD File is missing\r\n"
-	RPL_LUSER = ":hostname 251 user1 :There are 1 users and 0 services on 1 servers\r\n:hostname 252 user1 0 :operator(s) online\r\n:hostname 253 user1 0 :unknown connection(s)\r\n:hostname 254 user1 0 :channels formed\r\n:hostname 255 user1 :I have 1 clients and 1 servers\r\n"
+	VERSION    = "1.0.0"
+	RPL_MOTD   = ":hostname 422 %s :MOTD File is missing\r\n"
+	RPL_LUSER1 = ":hostname 251 %s :There are 1 users and 0 services on 1 servers\r\n"
+	RPL_LUSER2 = ":hostname 252 %s 0 :operator(s) online\r\n"
+	RPL_LUSER3 = ":hostname 253 %s 0 :unknown connection(s)\r\n"
+	RPL_LUSER4 = ":hostname 254 %s 0 :channels formed\r\n"
+	RPL_LUSER5 = ":hostname 255 %s :I have 1 clients and 1 servers\r\n"
 )
 
 var (
@@ -97,6 +101,10 @@ func handleConnection(ic *IRCConn) {
 			handleQuit(ic, params)
 		case "PRIVMSG":
 			handlePrivMsg(ic, params)
+		case "PING":
+			handlePing(ic, params)
+		case "PONG":
+			break
 		default:
 			log.Println("Command not recognized")
 		}
@@ -105,6 +113,15 @@ func handleConnection(ic *IRCConn) {
 	err := scanner.Err()
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
+	}
+}
+
+func handlePing(ic *IRCConn, params string) {
+	// TODO update ping to update connection lifetime?
+	msg := fmt.Sprintf("PONG %s\r\n", ic.Conn.LocalAddr().String())
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -235,14 +252,38 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 
-		log.Printf(RPL_LUSER)
-		_, err = ic.Conn.Write([]byte(RPL_LUSER))
+		msg = fmt.Sprintf(RPL_LUSER1, ic.Nick)
+		_, err = ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		log.Printf(RPL_MOTD)
-		_, err = ic.Conn.Write([]byte(RPL_MOTD))
+		msg = fmt.Sprintf(RPL_LUSER2, ic.Nick)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		msg = fmt.Sprintf(RPL_LUSER3, ic.Nick)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		msg = fmt.Sprintf(RPL_LUSER4, ic.Nick)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		msg = fmt.Sprintf(RPL_LUSER5, ic.Nick)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		msg = fmt.Sprintf(RPL_MOTD, ic.Nick)
+		_, err = ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Fatal(err)
 		}
