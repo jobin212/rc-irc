@@ -100,7 +100,7 @@ func handleConnection(ic *IRCConn) {
 }
 
 func handleQuit(ic *IRCConn, params string) {
-	if !validateParameters("NICK", params, 0, ic) {
+	if !validateWelcomeAndParameters("QUIT", params, 0, ic) {
 		return
 	}
 
@@ -114,7 +114,7 @@ func handleQuit(ic *IRCConn, params string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// TODO close gracefully
+	// TODO close gracefully, cleaup
 	err = ic.Conn.Close()
 	if err != nil {
 		log.Println(err)
@@ -122,7 +122,7 @@ func handleQuit(ic *IRCConn, params string) {
 }
 
 func handleNick(ic *IRCConn, params string) {
-	if !validateParameters("NICK", params, 1, ic) {
+	if !validateWelcomeAndParameters("NICK", params, 1, ic) {
 		return
 	}
 
@@ -146,7 +146,7 @@ func handleNick(ic *IRCConn, params string) {
 }
 
 func handleUser(ic *IRCConn, params string) {
-	if !validateParameters("USER", params, 4, ic) {
+	if !validateWelcomeAndParameters("USER", params, 4, ic) {
 		return
 	}
 
@@ -182,7 +182,20 @@ func checkAndSendWelcome(ic *IRCConn) {
 	}
 }
 
-func validateParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
+func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
+	if command != "NICK" && command != "USER" && !ic.Welcomed {
+		msg := fmt.Sprintf(
+			":%s 451 :You have not registered\r\n",
+			ic.Conn.LocalAddr())
+
+		log.Printf(msg)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return false
+	}
+
 	paramVals := strings.Fields(params)
 	if len(paramVals) >= expectedNumParams {
 		return true
