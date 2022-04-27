@@ -130,7 +130,7 @@ func handleNick(ic *IRCConn, params string) {
 
 	_, ok := nickInUse[nick]
 	if nick != ic.Nick && ok {
-		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use.\r\n",
+		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
 			ic.Conn.LocalAddr(), nick)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
@@ -172,17 +172,25 @@ func checkAndSendWelcome(ic *IRCConn) {
 
 func validateParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
 	paramVals := strings.Fields(params)
-	if len(paramVals) < expectedNumParams {
-		msg := fmt.Sprintf(
+	if len(paramVals) >= expectedNumParams {
+		return true
+	}
+
+	var msg string
+	if command == "NICK" {
+		msg = fmt.Sprintf(
+			":%s 431 :No nickname given\r\n",
+			ic.Conn.LocalAddr())
+	} else {
+		msg = fmt.Sprintf(
 			":%s 461 %s :Not enough parameters\r\n",
 			ic.Conn.LocalAddr(), command)
-
-		log.Printf(msg)
-		_, err := ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-		return false
 	}
-	return true
+
+	log.Printf(msg)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return false
 }
