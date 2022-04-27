@@ -101,7 +101,7 @@ func handleConnection(ic *IRCConn) {
 			if !ic.Welcomed && ic.User != "" {
 				msg := fmt.Sprintf(
 					":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
-					ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.Nick, client_address)
+					ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, client_address)
 
 				log.Printf(msg)
 				_, err := ic.Conn.Write([]byte(msg))
@@ -111,13 +111,13 @@ func handleConnection(ic *IRCConn) {
 				ic.Welcomed = true
 			}
 		case "USER":
-			username := params[3]
+			username := params[0]
 			ic.User = username
 
 			if !ic.Welcomed && ic.Nick != "" {
 				msg := fmt.Sprintf(
 					":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
-					ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.Nick, client_address)
+					ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, client_address)
 
 				log.Printf(msg)
 				_, err := ic.Conn.Write([]byte(msg))
