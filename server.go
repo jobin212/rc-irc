@@ -7,6 +7,11 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
+)
+
+const (
+	VERSION = "1.0.0"
 )
 
 var (
@@ -179,6 +184,39 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 		ic.Welcomed = true
+
+		// RPL_YOURHOST
+		msg = fmt.Sprintf(
+			":%s 002 %s :Your host is %s, running version %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION)
+
+		log.Printf(msg)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// RPL_CREATED
+		msg = fmt.Sprintf(
+			":%s 003 %s :This server was created %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, time.Now().String())
+
+		log.Printf(msg)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// RPL_MYINFO
+		msg = fmt.Sprintf(
+			":%s 004 %s %s %s %s %s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION, "ao", "mtov")
+
+		log.Printf(msg)
+		_, err = ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
