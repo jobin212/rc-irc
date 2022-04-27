@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -75,14 +76,26 @@ func main() {
 							if val == client_address {
 								log.Println("IGNORING REPEAT NICK")
 							} else {
-								log.Printf(":%s 433 * %s :Nickname is already in use.\r\n",
+								msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use.\r\n",
 									server_address, nick)
+
+								log.Println(msg)
+								_, err = conn.Write([]byte(msg))
+								if err != nil {
+									log.Fatal(err)
+								}
 							}
 						}
 					case "USER":
-						log.Printf(
+						msg := fmt.Sprintf(
 							":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
 							server_address, params[0], params[0], params[0], client_address)
+
+						log.Println(msg)
+						_, err = conn.Write([]byte(msg))
+						if err != nil {
+							log.Fatal(err)
+						}
 					default:
 						log.Println("Command not recognized")
 					}
