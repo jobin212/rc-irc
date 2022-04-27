@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,7 @@ var (
 	operatorpassword = flag.String("o", "pw", "password")
 	nickInUse        = map[string]bool{}
 	nickToConn       = map[string]*IRCConn{}
+	ntcMtx           = sync.Mutex{}
 )
 
 type IRCConn struct {
@@ -116,10 +118,17 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	// get connection from targetNick
+	ntcMtx.Lock()
 	recipientIc, ok := nickToConn[targetNick]
+	ntcMtx.Unlock()
+
 	if !ok {
-		// RETURN ERR_NORECIPIENT, 411
-		log.Println("ERR_NORECIPIENT")
+		// RETURN ERR_NOSUCHNICK, 401?
+		msg := fmt.Sprintf(":%s 401 %s :No such nick/channel", ic.Conn.LocalAddr(), targetNick)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending nosuchnick reply")
+		}
 		return
 	}
 
@@ -177,12 +186,14 @@ func handleNick(ic *IRCConn, params string) {
 	}
 
 	// if Nick has already been set
+	ntcMtx.Lock()
 	if prevNick != "*" {
 		delete(nickInUse, prevNick)
 		delete(nickToConn, prevNick)
 	}
 
 	nickToConn[nick] = ic
+	ntcMtx.Unlock()
 	nickInUse[nick] = true
 	ic.Nick = nick
 
