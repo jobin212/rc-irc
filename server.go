@@ -76,11 +76,10 @@ func handleConnection(ic *IRCConn) {
 
 	for scanner.Scan() {
 		incoming_message := scanner.Text()
-		log.Printf("LEN %d MESG %s\n", len(incoming_message), incoming_message)
 		if len(incoming_message) >= 510 {
 			incoming_message = incoming_message[:510]
-			log.Printf("LEN2 %d MESG %s\n", len(incoming_message), incoming_message)
 		}
+
 		incoming_message = strings.Trim(incoming_message, " ")
 		log.Printf("Incoming message: %s", incoming_message)
 		split_message := strings.SplitN(incoming_message, " ", 2)
