@@ -74,7 +74,7 @@ func handleConnection(ic *IRCConn) {
 	scanner.Split(bufio.ScanLines)
 
 	for scanner.Scan() {
-		incoming_message := scanner.Text()
+		incoming_message := strings.Trim(scanner.Text(), " ")
 		log.Printf("Incoming message: %s", incoming_message)
 		split_message := strings.SplitN(incoming_message, " ", 2)
 
@@ -86,14 +86,14 @@ func handleConnection(ic *IRCConn) {
 		if strings.HasPrefix(split_message[0], ":") {
 			prefix = split_message[0]
 			log.Printf("Prefix %s\n", prefix)
-			split_message = strings.SplitN(split_message[1], " ", 2)
+			split_message = strings.SplitN(strings.Trim(split_message[1], " "), " ", 2)
 		}
 
 		command := split_message[0]
 
 		var params string = ""
 		if len(split_message) >= 2 {
-			params = split_message[1]
+			params = strings.Trim(split_message[1], " ")
 		}
 
 		switch command {
@@ -113,9 +113,12 @@ func handleConnection(ic *IRCConn) {
 			handleMotd(ic, params)
 		case "NOTICE":
 			handleNotice(ic, params)
+		case "WHOIS":
+			handleWhoIs(ic, params)
+		case "":
+			break
 		default:
 			handleDefault(ic, params, command)
-
 		}
 
 	}
@@ -123,6 +126,14 @@ func handleConnection(ic *IRCConn) {
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
 	}
+}
+
+func handleWhoIs(ic *IRCConn, params string) {
+	if !ic.Welcomed {
+		return
+	}
+
+	return
 }
 
 func handleDefault(ic *IRCConn, params, command string) {
@@ -142,7 +153,7 @@ func handleNotice(ic *IRCConn, params string) {
 		return
 	}
 
-	splitParams := strings.SplitAfterN(params, " ", 2)
+	splitParams := strings.SplitN(params, " ", 2)
 	if len(splitParams) < 2 {
 		return
 	}
@@ -218,7 +229,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 		return
 	}
 
-	splitParams := strings.SplitAfterN(params, " ", 2)
+	splitParams := strings.SplitN(params, " ", 2)
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	// get connection from targetNick
@@ -457,7 +468,7 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 }
 
 func removePrefix(s string) string {
-	split := strings.SplitAfterN(s, ":", 2)
+	split := strings.SplitN(s, ":", 2)
 	if len(split) == 1 {
 		return split[0]
 	} else {
