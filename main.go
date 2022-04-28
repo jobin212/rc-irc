@@ -106,25 +106,25 @@ func handleConnection(ic *IRCConn) {
 
 		switch command {
 		case "NICK":
-			handleNick(ic, params)
+			handleNICK(ic, params)
 		case "USER":
-			handleUser(ic, params)
+			handleUSER(ic, params)
 		case "QUIT":
-			handleQuit(ic, params)
+			handleQUIT(ic, params)
 		case "PRIVMSG":
-			handlePrivMsg(ic, params)
+			handlePRIVMSG(ic, params)
 		case "PING":
-			handlePing(ic, params)
+			handlePING(ic, params)
 		case "PONG":
 			break
 		case "MOTD":
-			handleMotd(ic, params)
+			handleMOTD(ic, params)
 		case "NOTICE":
-			handleNotice(ic, params)
+			handleNOTICE(ic, params)
 		case "WHOIS":
-			handleWhoIs(ic, params)
+			handleWHOIS(ic, params)
 		case "LUSERS":
-			handleLUsers(ic, params)
+			handleLUSERS(ic, params)
 		case "":
 			break
 		default:
@@ -138,15 +138,15 @@ func handleConnection(ic *IRCConn) {
 	}
 }
 
-func handleLUsers(ic *IRCConn, params string) {
+func handleLUSERS(ic *IRCConn, params string) {
 	if !validateWelcomeAndParameters("LUSERS", params, 0, ic) {
 		return
 	}
 
-	writeLUsers(ic)
+	writeLUSERS(ic)
 }
 
-func writeLUsers(ic *IRCConn) {
+func writeLUSERS(ic *IRCConn) {
 	numServers, numServices, numOperators, numChannels := 1, 0, 0, 0
 	numUsers, numUnknownConnections, numClients := 0, 0, 0
 
@@ -185,7 +185,7 @@ func writeLUsers(ic *IRCConn) {
 	}
 }
 
-func handleWhoIs(ic *IRCConn, params string) {
+func handleWHOIS(ic *IRCConn, params string) {
 	if !ic.Welcomed {
 		return
 	}
@@ -239,7 +239,7 @@ func handleDefault(ic *IRCConn, params, command string) {
 	}
 }
 
-func handleNotice(ic *IRCConn, params string) {
+func handleNOTICE(ic *IRCConn, params string) {
 	if !ic.Welcomed {
 		return
 	}
@@ -269,11 +269,11 @@ func handleNotice(ic *IRCConn, params string) {
 
 }
 
-func handleMotd(ic *IRCConn, params string) {
-	writeMotd(ic)
+func handleMOTD(ic *IRCConn, params string) {
+	writeMOTD(ic)
 }
 
-func writeMotd(ic *IRCConn) {
+func writeMOTD(ic *IRCConn) {
 	dat, err := os.ReadFile("./motd.txt")
 	if err != nil {
 		msg := fmt.Sprintf(":%s 422 %s :MOTD File is missing\r\n",
@@ -308,7 +308,7 @@ func writeMotd(ic *IRCConn) {
 	}
 }
 
-func handlePing(ic *IRCConn, params string) {
+func handlePING(ic *IRCConn, params string) {
 	// TODO validate welcome?
 	// TODO update ping to update connection lifetime?
 	msg := fmt.Sprintf("PONG %s\r\n", ic.Conn.LocalAddr().String())
@@ -318,7 +318,7 @@ func handlePing(ic *IRCConn, params string) {
 	}
 }
 
-func handlePrivMsg(ic *IRCConn, params string) {
+func handlePRIVMSG(ic *IRCConn, params string) {
 	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic) {
 		return
 	}
@@ -352,7 +352,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	}
 }
 
-func handleQuit(ic *IRCConn, params string) {
+func handleQUIT(ic *IRCConn, params string) {
 	if !validateWelcomeAndParameters("QUIT", params, 0, ic) {
 		return
 	}
@@ -388,7 +388,7 @@ func handleQuit(ic *IRCConn, params string) {
 	}
 }
 
-func handleNick(ic *IRCConn, params string) {
+func handleNICK(ic *IRCConn, params string) {
 	if !validateWelcomeAndParameters("NICK", params, 1, ic) {
 		return
 	}
@@ -420,7 +420,7 @@ func handleNick(ic *IRCConn, params string) {
 	checkAndSendWelcome(ic)
 }
 
-func handleUser(ic *IRCConn, params string) {
+func handleUSER(ic *IRCConn, params string) {
 	if !validateWelcomeAndParameters("USER", params, 4, ic) {
 		return
 	}
@@ -495,8 +495,8 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 
-		writeLUsers(ic)
-		writeMotd(ic)
+		writeLUSERS(ic)
+		writeMOTD(ic)
 	}
 }
 
