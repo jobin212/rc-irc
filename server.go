@@ -34,6 +34,7 @@ type IRCConn struct {
 	User     string
 	Nick     string
 	Conn     net.Conn
+	RealName string
 	Welcomed bool
 }
 
@@ -75,6 +76,11 @@ func handleConnection(ic *IRCConn) {
 
 	for scanner.Scan() {
 		incoming_message := scanner.Text()
+		if len(incoming_message) >= 510 {
+			incoming_message = incoming_message[:510]
+		}
+
+		incoming_message = strings.Trim(incoming_message, " ")
 		log.Printf("Incoming message: %s", incoming_message)
 		split_message := strings.SplitN(incoming_message, " ", 2)
 
@@ -86,14 +92,14 @@ func handleConnection(ic *IRCConn) {
 		if strings.HasPrefix(split_message[0], ":") {
 			prefix = split_message[0]
 			log.Printf("Prefix %s\n", prefix)
-			split_message = strings.SplitN(split_message[1], " ", 2)
+			split_message = strings.SplitN(strings.Trim(split_message[1], " "), " ", 2)
 		}
 
 		command := split_message[0]
 
 		var params string = ""
 		if len(split_message) >= 2 {
-			params = split_message[1]
+			params = strings.Trim(split_message[1], " ")
 		}
 
 		switch command {
@@ -113,9 +119,12 @@ func handleConnection(ic *IRCConn) {
 			handleMotd(ic, params)
 		case "NOTICE":
 			handleNotice(ic, params)
+		case "WHOIS":
+			handleWhoIs(ic, params)
+		case "":
+			break
 		default:
 			handleDefault(ic, params, command)
-
 		}
 
 	}
@@ -123,6 +132,54 @@ func handleConnection(ic *IRCConn) {
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
 	}
+}
+
+func handleWhoIs(ic *IRCConn, params string) {
+	if !ic.Welcomed {
+		return
+	}
+
+	targetNick := strings.Trim(params, " ")
+
+	if targetNick == "" {
+		return
+	}
+
+	ntcMtx.Lock()
+	targetIc, ok := nickToConn[targetNick]
+	ntcMtx.Unlock()
+
+	if !ok {
+		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending nosuchnick reply")
+		}
+		return
+	}
+
+	msg := fmt.Sprintf(":%s 311 %s %s %s %s * :%s\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.User, targetIc.Conn.RemoteAddr().String(), targetIc.RealName)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msg = fmt.Sprintf(":%s 312 %s %s %s :%s\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.Conn.LocalAddr().String(), "<server info>")
+	_, err = ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msg = fmt.Sprintf(":%s 318 %s %s :End of WHOIS list\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick)
+	_, err = ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return
 }
 
 func handleDefault(ic *IRCConn, params, command string) {
@@ -142,11 +199,11 @@ func handleNotice(ic *IRCConn, params string) {
 		return
 	}
 
-	splitParams := strings.SplitAfterN(params, " ", 2)
+	splitParams := strings.SplitN(params, " ", 2)
 	if len(splitParams) < 2 {
 		return
 	}
-	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
+	targetNick, userMessage := splitParams[0], splitParams[1]
 
 	// get connection from targetNick
 	ntcMtx.Lock()
@@ -218,7 +275,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 		return
 	}
 
-	splitParams := strings.SplitAfterN(params, " ", 2)
+	splitParams := strings.SplitN(params, " ", 2)
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	// get connection from targetNick
@@ -227,7 +284,6 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	ntcMtx.Unlock()
 
 	if !ok {
-		// RETURN ERR_NOSUCHNICK, 401?
 		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
@@ -239,6 +295,9 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	msg := fmt.Sprintf(
 		":%s!%s@%s PRIVMSG %s %s\r\n",
 		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
+	if len(msg) > 512 {
+		msg = msg[:510] + "\r\n"
+	}
 	_, err := recipientIc.Conn.Write([]byte(msg))
 	if err != nil {
 		log.Fatal(err)
@@ -321,7 +380,14 @@ func handleUser(ic *IRCConn, params string) {
 		return
 	}
 
-	ic.User = strings.SplitN(params, " ", 2)[0]
+	splitParams := strings.SplitN(params, " ", 2)
+	ic.User = splitParams[0]
+	splitOnColon := strings.SplitN(splitParams[1], ":", 2)
+	if len(splitOnColon) > 1 {
+		ic.RealName = splitOnColon[1]
+	} else {
+		ic.RealName = strings.SplitN(strings.Trim(splitParams[1], " "), " ", 3)[2]
+	}
 
 	checkAndSendWelcome(ic)
 }
@@ -457,7 +523,7 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 }
 
 func removePrefix(s string) string {
-	split := strings.SplitAfterN(s, ":", 2)
+	split := strings.SplitN(s, ":", 2)
 	if len(split) == 1 {
 		return split[0]
 	} else {
