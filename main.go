@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	port             = flag.String("p", "7776", "http service address")
+	port             = flag.String("p", "8080", "http service address")
 	operatorPassword = flag.String("o", "pw", "operator password")
 	nickToConn       = map[string]*IRCConn{}
 	ntcMtx           = sync.Mutex{}
@@ -36,7 +36,7 @@ type IRCConn struct {
 func main() {
 	flag.Parse()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", *port))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", *port))
 	if err != nil {
 		log.Fatal(err)
 	}
