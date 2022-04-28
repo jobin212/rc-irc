@@ -13,13 +13,7 @@ import (
 )
 
 const (
-	VERSION    = "1.0.0"
-	RPL_MOTD   = ":hostname 422 %s :MOTD File is missing\r\n"
-	RPL_LUSER1 = ":hostname 251 %s :There are 1 users and 0 services on 1 servers\r\n"
-	RPL_LUSER2 = ":hostname 252 %s 0 :operator(s) online\r\n"
-	RPL_LUSER3 = ":hostname 253 %s 0 :unknown connection(s)\r\n"
-	RPL_LUSER4 = ":hostname 254 %s 0 :channels formed\r\n"
-	RPL_LUSER5 = ":hostname 255 %s :I have 1 clients and 1 servers\r\n"
+	VERSION = "1.0.0"
 )
 
 var (
@@ -147,6 +141,10 @@ func handleLUser(ic *IRCConn, params string) {
 		return
 	}
 
+	writeLUser(ic)
+}
+
+func writeLUser(ic *IRCConn) {
 	numServers, numServices, numOperators, numChannels := 1, 1, 0, 0
 	numUsers, numUnknownConnections, numClients := 0, 0, 0
 
@@ -270,6 +268,10 @@ func handleNotice(ic *IRCConn, params string) {
 }
 
 func handleMotd(ic *IRCConn, params string) {
+	writeMotd(ic)
+}
+
+func writeMotd(ic *IRCConn) {
 	dat, err := os.ReadFile("./motd.txt")
 	if err != nil {
 		msg := fmt.Sprintf(":%s 422 %s :MOTD File is missing\r\n",
@@ -302,7 +304,6 @@ func handleMotd(ic *IRCConn, params string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return
 }
 
 func handlePing(ic *IRCConn, params string) {
@@ -492,41 +493,8 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 
-		msg = fmt.Sprintf(RPL_LUSER1, ic.Nick)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		msg = fmt.Sprintf(RPL_LUSER2, ic.Nick)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		msg = fmt.Sprintf(RPL_LUSER3, ic.Nick)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		msg = fmt.Sprintf(RPL_LUSER4, ic.Nick)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		msg = fmt.Sprintf(RPL_LUSER5, ic.Nick)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		msg = fmt.Sprintf(RPL_MOTD, ic.Nick)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
+		writeLUser(ic)
+		writeMotd(ic)
 	}
 }
 
