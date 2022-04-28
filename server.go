@@ -24,10 +24,11 @@ const (
 
 var (
 	port             = flag.String("p", "7776", "http service address")
-	operatorpassword = flag.String("o", "pw", "password")
-	nickInUse        = map[string]bool{}
+	operatorPassword = flag.String("o", "pw", "operator password")
 	nickToConn       = map[string]*IRCConn{}
 	ntcMtx           = sync.Mutex{}
+	connsMtx         = sync.Mutex{}
+	ircConns         = []*IRCConn{}
 )
 
 type IRCConn struct {
@@ -59,7 +60,12 @@ func main() {
 				return
 			}
 
-			go handleConnection(&IRCConn{Conn: conn, Nick: "*"})
+			ircConn := &IRCConn{Conn: conn, Nick: "*"}
+			connsMtx.Lock()
+			ircConns = append(ircConns, ircConn)
+			connsMtx.Unlock()
+
+			go handleConnection(ircConn)
 		}
 	}()
 
@@ -121,6 +127,8 @@ func handleConnection(ic *IRCConn) {
 			handleNotice(ic, params)
 		case "WHOIS":
 			handleWhoIs(ic, params)
+		case "LUSER":
+			handleLUser(ic, params)
 		case "":
 			break
 		default:
@@ -131,6 +139,49 @@ func handleConnection(ic *IRCConn) {
 	err := scanner.Err()
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
+	}
+}
+
+func handleLUser(ic *IRCConn, params string) {
+	if !validateWelcomeAndParameters("LUSER", params, 0, ic) {
+		return
+	}
+
+	numServers, numServices, numOperators, numChannels := 1, 1, 0, 0
+	numUsers, numUnknownConnections, numClients := 0, 0, 0
+
+	connsMtx.Lock()
+	for _, conn := range ircConns {
+		if conn.Welcomed {
+			numUsers++
+			numClients++
+		} else if conn.Nick != "*" || conn.User != "" {
+			numClients++
+		} else {
+			numUnknownConnections++
+		}
+	}
+	connsMtx.Unlock()
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(":%s 251 %s :There are %d users and %d services on %d servers\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, numUsers, numServices, numServers))
+
+	sb.WriteString(fmt.Sprintf(":%s 252 %s %d :operator(s) online\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, numOperators))
+
+	sb.WriteString(fmt.Sprintf(":%s 253 %s %d :unknown connection(s)\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, numUnknownConnections))
+
+	sb.WriteString(fmt.Sprintf(":%s 254 %s %d :channels formed\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, numChannels))
+
+	sb.WriteString(fmt.Sprintf(":%s 255 %s :I have %d clients and %d servers\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, numClients, numServers))
+
+	_, err := ic.Conn.Write([]byte(sb.String()))
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -158,23 +209,17 @@ func handleWhoIs(ic *IRCConn, params string) {
 		return
 	}
 
-	msg := fmt.Sprintf(":%s 311 %s %s %s %s * :%s\r\n",
-		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.User, targetIc.Conn.RemoteAddr().String(), targetIc.RealName)
-	_, err := ic.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Fatal(err)
-	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(":%s 311 %s %s %s %s * :%s\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.User, targetIc.Conn.RemoteAddr().String(), targetIc.RealName))
 
-	msg = fmt.Sprintf(":%s 312 %s %s %s :%s\r\n",
-		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.Conn.LocalAddr().String(), "<server info>")
-	_, err = ic.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Fatal(err)
-	}
+	sb.WriteString(fmt.Sprintf(":%s 312 %s %s %s :%s\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.Conn.LocalAddr().String(), "<server info>"))
 
-	msg = fmt.Sprintf(":%s 318 %s %s :End of WHOIS list\r\n",
-		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick)
-	_, err = ic.Conn.Write([]byte(msg))
+	sb.WriteString(fmt.Sprintf(":%s 318 %s %s :End of WHOIS list\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick))
+
+	_, err := ic.Conn.Write([]byte(sb.String()))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -320,7 +365,18 @@ func handleQuit(ic *IRCConn, params string) {
 		log.Fatal(err)
 	}
 
-	delete(nickInUse, ic.Nick)
+	ntcMtx.Lock()
+	delete(nickToConn, ic.Nick)
+	ntcMtx.Unlock()
+
+	connsMtx.Lock()
+	for idx, conn := range ircConns {
+		if conn == ic {
+			ircConns = append(ircConns[:idx], ircConns[idx+1:]...)
+			break
+		}
+	}
+	connsMtx.Unlock()
 
 	// TODO close gracefully, cleaup
 	err = ic.Conn.Close()
@@ -337,8 +393,8 @@ func handleNick(ic *IRCConn, params string) {
 	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
 
-	_, ok := nickInUse[nick]
-	if nick != ic.Nick && ok {
+	_, nickInUse := nickToConn[nick]
+	if nick != ic.Nick && nickInUse { // TODO what happens if they try to change their own nick?
 		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
 			ic.Conn.LocalAddr(), nick)
 		_, err := ic.Conn.Write([]byte(msg))
@@ -351,13 +407,11 @@ func handleNick(ic *IRCConn, params string) {
 	// if Nick has already been set
 	ntcMtx.Lock()
 	if prevNick != "*" {
-		delete(nickInUse, prevNick)
 		delete(nickToConn, prevNick)
 	}
 
 	nickToConn[nick] = ic
 	ntcMtx.Unlock()
-	nickInUse[nick] = true
 	ic.Nick = nick
 
 	checkAndSendWelcome(ic)
