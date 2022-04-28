@@ -34,6 +34,7 @@ type IRCConn struct {
 	User     string
 	Nick     string
 	Conn     net.Conn
+	RealName string
 	Welcomed bool
 }
 
@@ -74,7 +75,13 @@ func handleConnection(ic *IRCConn) {
 	scanner.Split(bufio.ScanLines)
 
 	for scanner.Scan() {
-		incoming_message := strings.Trim(scanner.Text(), " ")
+		incoming_message := scanner.Text()
+		log.Printf("LEN %d MESG %s\n", len(incoming_message), incoming_message)
+		if len(incoming_message) >= 510 {
+			incoming_message = incoming_message[:510]
+			log.Printf("LEN2 %d MESG %s\n", len(incoming_message), incoming_message)
+		}
+		incoming_message = strings.Trim(incoming_message, " ")
 		log.Printf("Incoming message: %s", incoming_message)
 		split_message := strings.SplitN(incoming_message, " ", 2)
 
@@ -133,6 +140,42 @@ func handleWhoIs(ic *IRCConn, params string) {
 		return
 	}
 
+	targetNick := strings.Trim(params, " ")
+
+	ntcMtx.Lock()
+	targetIc, ok := nickToConn[targetNick]
+	ntcMtx.Unlock()
+
+	if !ok {
+		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending nosuchnick reply")
+		}
+		return
+	}
+
+	msg := fmt.Sprintf(":%s 311 %s %s %s %s * :%s\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.User, targetIc.Conn.RemoteAddr().String(), targetIc.RealName)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msg = fmt.Sprintf(":%s 312 %s %s %s :%s\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick, targetIc.Conn.LocalAddr().String(), "<server info>")
+	_, err = ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msg = fmt.Sprintf(":%s 318 %s %s :End of WHOIS list\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick)
+	_, err = ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	return
 }
 
@@ -157,7 +200,7 @@ func handleNotice(ic *IRCConn, params string) {
 	if len(splitParams) < 2 {
 		return
 	}
-	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
+	targetNick, userMessage := splitParams[0], splitParams[1]
 
 	// get connection from targetNick
 	ntcMtx.Lock()
@@ -238,7 +281,6 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	ntcMtx.Unlock()
 
 	if !ok {
-		// RETURN ERR_NOSUCHNICK, 401?
 		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
@@ -250,6 +292,9 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	msg := fmt.Sprintf(
 		":%s!%s@%s PRIVMSG %s %s\r\n",
 		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
+	if len(msg) > 512 {
+		msg = msg[:510] + "\r\n"
+	}
 	_, err := recipientIc.Conn.Write([]byte(msg))
 	if err != nil {
 		log.Fatal(err)
