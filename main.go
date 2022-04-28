@@ -451,49 +451,34 @@ func handleUSER(ic *IRCConn, params string) {
 
 func checkAndSendWelcome(ic *IRCConn) {
 	if !ic.Welcomed && ic.Nick != "*" && ic.User != "" {
-		msg := fmt.Sprintf(
-			":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, ic.Conn.RemoteAddr().String())
 
-		log.Printf(msg)
-		_, err := ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-		ic.Welcomed = true
+		var sb strings.Builder
+
+		sb.WriteString(fmt.Sprintf(
+			":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, ic.Conn.RemoteAddr().String()))
 
 		// RPL_YOURHOST
-		msg = fmt.Sprintf(
+		sb.WriteString(fmt.Sprintf(
 			":%s 002 %s :Your host is %s, running version %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION)
-
-		log.Printf(msg)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
+			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION))
 
 		// RPL_CREATED
-		msg = fmt.Sprintf(
+		sb.WriteString(fmt.Sprintf(
 			":%s 003 %s :This server was created %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, timeCreated)
-
-		log.Printf(msg)
-		_, err = ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
+			ic.Conn.LocalAddr(), ic.Nick, timeCreated))
 
 		// RPL_MYINFO
-		msg = fmt.Sprintf(
+		sb.WriteString(fmt.Sprintf(
 			":%s 004 %s %s %s %s %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION, "ao", "mtov")
+			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION, "ao", "mtov"))
 
-		log.Printf(msg)
-		_, err = ic.Conn.Write([]byte(msg))
+		_, err := ic.Conn.Write([]byte(sb.String()))
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		ic.Welcomed = true
 
 		writeLUSERS(ic)
 		writeMOTD(ic)
