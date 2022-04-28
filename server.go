@@ -114,13 +114,26 @@ func handleConnection(ic *IRCConn) {
 		case "NOTICE":
 			handleNotice(ic, params)
 		default:
-			log.Println("Command not recognized")
+			handleDefault(ic, params, command)
+
 		}
 
 	}
 	err := scanner.Err()
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
+	}
+}
+
+func handleDefault(ic *IRCConn, params, command string) {
+	if !ic.Welcomed {
+		return
+	}
+	msg := fmt.Sprintf(":%s 421 %s %s :Unknown command\r\n",
+		ic.Conn.LocalAddr(), ic.Nick, command)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Println("error sending nosuchnick reply")
 	}
 }
 
