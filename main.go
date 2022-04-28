@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	VERSION = "1.0.0"
+	VERSION  = "1.0.0"
+	layoutUS = "January 2, 2006"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 	ntcMtx           = sync.Mutex{}
 	connsMtx         = sync.Mutex{}
 	ircConns         = []*IRCConn{}
+	timeCreated      = time.Now().Format(layoutUS)
 )
 
 type IRCConn struct {
@@ -474,7 +476,7 @@ func checkAndSendWelcome(ic *IRCConn) {
 		// RPL_CREATED
 		msg = fmt.Sprintf(
 			":%s 003 %s :This server was created %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, time.Now().String())
+			ic.Conn.LocalAddr(), ic.Nick, timeCreated)
 
 		log.Printf(msg)
 		_, err = ic.Conn.Write([]byte(msg))
