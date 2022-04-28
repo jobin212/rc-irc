@@ -121,8 +121,8 @@ func handleConnection(ic *IRCConn) {
 			handleNotice(ic, params)
 		case "WHOIS":
 			handleWhoIs(ic, params)
-		case "LUSER":
-			handleLUser(ic, params)
+		case "LUSERS":
+			handleLUsers(ic, params)
 		case "":
 			break
 		default:
@@ -136,16 +136,16 @@ func handleConnection(ic *IRCConn) {
 	}
 }
 
-func handleLUser(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("LUSER", params, 0, ic) {
+func handleLUsers(ic *IRCConn, params string) {
+	if !validateWelcomeAndParameters("LUSERS", params, 0, ic) {
 		return
 	}
 
-	writeLUser(ic)
+	writeLUsers(ic)
 }
 
-func writeLUser(ic *IRCConn) {
-	numServers, numServices, numOperators, numChannels := 1, 1, 0, 0
+func writeLUsers(ic *IRCConn) {
+	numServers, numServices, numOperators, numChannels := 1, 0, 0, 0
 	numUsers, numUnknownConnections, numClients := 0, 0, 0
 
 	connsMtx.Lock()
@@ -493,7 +493,7 @@ func checkAndSendWelcome(ic *IRCConn) {
 			log.Fatal(err)
 		}
 
-		writeLUser(ic)
+		writeLUsers(ic)
 		writeMotd(ic)
 	}
 }
