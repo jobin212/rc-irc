@@ -142,6 +142,10 @@ func handleWhoIs(ic *IRCConn, params string) {
 
 	targetNick := strings.Trim(params, " ")
 
+	if targetNick == "" {
+		return
+	}
+
 	ntcMtx.Lock()
 	targetIc, ok := nickToConn[targetNick]
 	ntcMtx.Unlock()
@@ -377,7 +381,14 @@ func handleUser(ic *IRCConn, params string) {
 		return
 	}
 
-	ic.User = strings.SplitN(params, " ", 2)[0]
+	splitParams := strings.SplitN(params, " ", 2)
+	ic.User = splitParams[0]
+	splitOnColon := strings.SplitN(splitParams[1], ":", 2)
+	if len(splitOnColon) > 1 {
+		ic.RealName = splitOnColon[1]
+	} else {
+		ic.RealName = strings.SplitN(strings.Trim(splitParams[1], " "), " ", 3)[2]
+	}
 
 	checkAndSendWelcome(ic)
 }
