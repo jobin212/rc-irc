@@ -472,6 +472,22 @@ func lookupChannelByName(name string) (*IRCChan, bool) {
 	return ircCh, ok
 }
 
+func sendMessageToChannel(senderIC *IRCConn, msg string, ircCh *IRCChan) {
+	members := getChannelMembers(ircCh)
+	for _, v := range members {
+		v := v
+		if v != senderIC {
+			go func() {
+				_, err := v.Conn.Write([]byte(msg))
+
+				if err != nil {
+					log.Fatal(err)
+				}
+			}()
+		}
+	}
+}
+
 func addUserToChannel(ic *IRCConn, ircCh *IRCChan) {
 	ircCh.Mtx.Lock()
 	ircCh.Members = append(ircCh.Members, ic)
@@ -480,15 +496,10 @@ func addUserToChannel(ic *IRCConn, ircCh *IRCChan) {
 	copy(members, ircCh.Members)
 	ircCh.Mtx.Unlock()
 	joinMsg := fmt.Sprintf(":%s!%s@%s JOIN %s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), ircCh.Name)
-	for _, v := range members {
-		v := v
-		go func() {
-			_, err := v.Conn.Write([]byte(joinMsg))
-
-			if err != nil {
-				log.Fatal(err)
-			}
-		}()
+	sendMessageToChannel(ic, joinMsg, ircCh)
+	_, err := ic.Conn.Write([]byte(joinMsg))
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -579,7 +590,6 @@ func handleJoin(ic *IRCConn, params string) {
 	}
 	// Join channel
 	addUserToChannel(ic, ircCh)
-	// TODO need to send other replies here
 	// RPL_TOPIC
 	sendTopicReply(ic, ircCh)
 	// RPL_NAMREPLY & RPL_ENDOFNAMES
