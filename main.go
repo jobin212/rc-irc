@@ -342,29 +342,52 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	}
 
 	splitParams := strings.SplitN(params, " ", 2)
-	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
+	target, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
-	// get connection from targetNick
-	recipientIc, ok := lookupNickConn(targetNick)
+	if strings.HasPrefix(target, "#") {
+		// get connection from targetNick
+		channel, ok := lookupChannelByName(target)
 
-	if !ok {
-		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
-		_, err := ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Println("error sending nosuchnick reply")
+		if !ok {
+			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Println("error sending nosuchnick reply")
+			}
+			return
 		}
-		return
-	}
 
-	msg := fmt.Sprintf(
-		":%s!%s@%s PRIVMSG %s %s\r\n",
-		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
-	if len(msg) > 512 {
-		msg = msg[:510] + "\r\n"
-	}
-	_, err := recipientIc.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Fatal(err)
+		msg := fmt.Sprintf(
+			":%s!%s@%s PRIVMSG %s %s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
+		if len(msg) > 512 {
+			msg = msg[:510] + "\r\n"
+		}
+
+		sendMessageToChannel(ic, msg, channel)
+	} else {
+		// get connection from targetNick
+		recipientIc, ok := lookupNickConn(target)
+
+		if !ok {
+			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Println("error sending nosuchnick reply")
+			}
+			return
+		}
+
+		msg := fmt.Sprintf(
+			":%s!%s@%s PRIVMSG %s %s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
+		if len(msg) > 512 {
+			msg = msg[:510] + "\r\n"
+		}
+		_, err := recipientIc.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
