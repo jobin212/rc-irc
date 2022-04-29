@@ -196,9 +196,10 @@ func handleWhoIs(ic *IRCConn, params string) {
 		return
 	}
 
-	ntcMtx.Lock()
-	targetIc, ok := nickToConn[targetNick]
-	ntcMtx.Unlock()
+	//ntcMtx.Lock()
+	//targetIc, ok := nickToConn[targetNick]
+	//ntcMtx.Unlock()
+	targetIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
 		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
@@ -239,6 +240,14 @@ func handleDefault(ic *IRCConn, params, command string) {
 	}
 }
 
+// Helper function to deal with the fact that nickToConn should be threadsafe
+func lookupNickConn(nick string) (*IRCConn, bool) {
+	ntcMtx.Lock()
+	recipientIc, ok := nickToConn[nick]
+	ntcMtx.Unlock()
+	return recipientIc, ok
+}
+
 func handleNotice(ic *IRCConn, params string) {
 	if !ic.Welcomed {
 		return
@@ -251,9 +260,10 @@ func handleNotice(ic *IRCConn, params string) {
 	targetNick, userMessage := splitParams[0], splitParams[1]
 
 	// get connection from targetNick
-	ntcMtx.Lock()
-	recipientIc, ok := nickToConn[targetNick]
-	ntcMtx.Unlock()
+	//ntcMtx.Lock()
+	//recipientIc, ok := nickToConn[targetNick]
+	//ntcMtx.Unlock()
+	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
 		return
@@ -327,9 +337,10 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	// get connection from targetNick
-	ntcMtx.Lock()
-	recipientIc, ok := nickToConn[targetNick]
-	ntcMtx.Unlock()
+	//ntcMtx.Lock()
+	//recipientIc, ok := nickToConn[targetNick]
+	//ntcMtx.Unlock()
+	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
 		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
@@ -396,6 +407,7 @@ func handleNick(ic *IRCConn, params string) {
 	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
 
+	//_, nickInUse := lookupNickConn(nick)
 	_, nickInUse := nickToConn[nick]
 	if nick != ic.Nick && nickInUse { // TODO what happens if they try to change their own nick?
 		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
