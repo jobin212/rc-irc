@@ -21,9 +21,13 @@ var (
 	port             = flag.String("p", "8080", "http service address")
 	operatorPassword = flag.String("o", "pw", "operator password")
 	nickToConn       = map[string]*IRCConn{}
-	ntcMtx           = sync.Mutex{}
+	nameToChan       = map[string]*IRCChan{}
+	nickToConnMtx    = sync.Mutex{}
+	nameToChanMtx    = sync.Mutex{}
 	connsMtx         = sync.Mutex{}
+	chansMtx         = sync.Mutex{}
 	ircConns         = []*IRCConn{}
+	ircChans         = []*IRCChan{}
 	timeCreated      = time.Now().Format(layoutUS)
 )
 
@@ -33,6 +37,14 @@ type IRCConn struct {
 	Conn     net.Conn
 	RealName string
 	Welcomed bool
+}
+
+type IRCChan struct {
+	Mtx     sync.Mutex
+	Name    string
+	Topic   string
+	OpNicks map[string]bool
+	Members []*IRCConn
 }
 
 func main() {
@@ -125,6 +137,8 @@ func handleConnection(ic *IRCConn) {
 			handleWhoIs(ic, params)
 		case "LUSERS":
 			handleLUsers(ic, params)
+		case "JOIN":
+			handleJoin(ic, params)
 		case "":
 			break
 		default:
@@ -239,13 +253,14 @@ func handleDefault(ic *IRCConn, params, command string) {
 
 // Helper function to deal with the fact that nickToConn should be threadsafe
 func lookupNickConn(nick string) (*IRCConn, bool) {
-	ntcMtx.Lock()
+	nickToConnMtx.Lock()
 	recipientIc, ok := nickToConn[nick]
-	ntcMtx.Unlock()
+	nickToConnMtx.Unlock()
 	return recipientIc, ok
 }
 
 func handleNotice(ic *IRCConn, params string) {
+	// TODO handle channels
 	if !ic.Welcomed {
 		return
 	}
@@ -328,29 +343,68 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	}
 
 	splitParams := strings.SplitN(params, " ", 2)
-	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
+	target, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
-	// get connection from targetNick
-	recipientIc, ok := lookupNickConn(targetNick)
+	if strings.HasPrefix(target, "#") {
+		// get connection from targetNick
+		channel, ok := lookupChannelByName(target)
 
-	if !ok {
-		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
-		_, err := ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Println("error sending nosuchnick reply")
+		if !ok {
+			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Println("error sending nosuchnick reply")
+			}
+			return
 		}
-		return
-	}
 
-	msg := fmt.Sprintf(
-		":%s!%s@%s PRIVMSG %s %s\r\n",
-		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
-	if len(msg) > 512 {
-		msg = msg[:510] + "\r\n"
-	}
-	_, err := recipientIc.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Fatal(err)
+		memberOfChannel := false
+		for _, v := range getChannelMembers(channel) {
+			if v == ic {
+				memberOfChannel = true
+			}
+		}
+
+		if !memberOfChannel {
+			msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Println("error sending nosuchnick reply")
+			}
+			return
+		}
+
+		msg := fmt.Sprintf(
+			":%s!%s@%s PRIVMSG %s %s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
+		if len(msg) > 512 {
+			msg = msg[:510] + "\r\n"
+		}
+
+		sendMessageToChannel(ic, msg, channel)
+	} else {
+		// get connection from targetNick
+		recipientIc, ok := lookupNickConn(target)
+
+		if !ok {
+			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Println("error sending nosuchnick reply")
+			}
+			return
+		}
+
+		msg := fmt.Sprintf(
+			":%s!%s@%s PRIVMSG %s %s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
+		if len(msg) > 512 {
+			msg = msg[:510] + "\r\n"
+		}
+		_, err := recipientIc.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -370,9 +424,9 @@ func handleQuit(ic *IRCConn, params string) {
 		log.Fatal(err)
 	}
 
-	ntcMtx.Lock()
+	nickToConnMtx.Lock()
 	delete(nickToConn, ic.Nick)
-	ntcMtx.Unlock()
+	nickToConnMtx.Unlock()
 
 	connsMtx.Lock()
 	for idx, conn := range ircConns {
@@ -410,13 +464,13 @@ func handleNick(ic *IRCConn, params string) {
 	}
 
 	// if Nick has already been set
-	ntcMtx.Lock()
+	nickToConnMtx.Lock()
 	if prevNick != "*" {
 		delete(nickToConn, prevNick)
 	}
 
 	nickToConn[nick] = ic
-	ntcMtx.Unlock()
+	nickToConnMtx.Unlock()
 	ic.Nick = nick
 
 	checkAndSendWelcome(ic)
@@ -449,6 +503,149 @@ func handleUser(ic *IRCConn, params string) {
 	}
 
 	checkAndSendWelcome(ic)
+}
+
+func lookupChannelByName(name string) (*IRCChan, bool) {
+	nameToChanMtx.Lock()
+	ircCh, ok := nameToChan[name]
+	nameToChanMtx.Unlock()
+	return ircCh, ok
+}
+
+func sendMessageToChannel(senderIC *IRCConn, msg string, ircCh *IRCChan) {
+	members := getChannelMembers(ircCh)
+	for _, v := range members {
+		v := v
+		if v != senderIC {
+			go func() {
+				_, err := v.Conn.Write([]byte(msg))
+
+				if err != nil {
+					log.Fatal(err)
+				}
+			}()
+		}
+	}
+}
+
+func addUserToChannel(ic *IRCConn, ircCh *IRCChan) {
+	ircCh.Mtx.Lock()
+	ircCh.Members = append(ircCh.Members, ic)
+	lm := len(ircCh.Members)
+	var members = make([]*IRCConn, lm, lm)
+	copy(members, ircCh.Members)
+	ircCh.Mtx.Unlock()
+	joinMsg := fmt.Sprintf(":%s!%s@%s JOIN %s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), ircCh.Name)
+	sendMessageToChannel(ic, joinMsg, ircCh)
+	_, err := ic.Conn.Write([]byte(joinMsg))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func newChannel(ic *IRCConn, chanName string) *IRCChan {
+	newChan := IRCChan{
+		Mtx:     sync.Mutex{},
+		Name:    chanName,
+		Topic:   "",
+		OpNicks: make(map[string]bool),
+		Members: []*IRCConn{},
+	}
+	newChan.OpNicks[ic.Nick] = true
+	chansMtx.Lock()
+	ircChans = append(ircChans, &newChan)
+	chansMtx.Unlock()
+
+	nameToChanMtx.Lock()
+	nameToChan[chanName] = &newChan
+	nameToChanMtx.Unlock()
+	return &newChan
+}
+
+func sendTopicReply(ic *IRCConn, ircCh *IRCChan) {
+	// Send channel topic to ic
+	// if channel topic is not sent, send RPL_NOTOPIC instead
+	topic := "No topic is set"
+	rplCode := 332
+	if ircCh.Topic != "" {
+		topic = ircCh.Topic
+		rplCode = 331
+	} else {
+		return
+	}
+	topicReply := fmt.Sprintf(":%s %03d %s %s :%s\r\n", ic.Conn.LocalAddr(), rplCode, ic.Nick, ircCh.Name, topic)
+	_, err := ic.Conn.Write([]byte(topicReply))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func getChannelMembers(ircCh *IRCChan) []*IRCConn {
+	ircCh.Mtx.Lock()
+	lm := len(ircCh.Members)
+	members := make([]*IRCConn, lm, lm)
+	copy(members, ircCh.Members)
+	ircCh.Mtx.Unlock()
+	return members
+}
+
+func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
+	var sb strings.Builder
+	channelStatusIndicator := "=" // Using public indicator as default
+	sb.WriteString(fmt.Sprintf(":%s %03d %s %s %s :", ic.Conn.LocalAddr(), 353, ic.Nick,
+		channelStatusIndicator, ircCh.Name))
+	members := getChannelMembers(ircCh)
+	for i, v := range members {
+		n := v.Nick
+		if i != 0 {
+			sb.WriteString(" ")
+		}
+		present, ok := ircCh.OpNicks[n]
+		if present && ok {
+			// append "@" to indicate channel member is op
+			sb.WriteString("@")
+		}
+		// append channel member nick
+		sb.WriteString(n)
+	}
+	sb.WriteString("\r\n")
+	// Send RPL_NAMREPLY
+	_, err := ic.Conn.Write([]byte(sb.String()))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	endOfNames := fmt.Sprintf(":%s %03d %s %s :End of NAMES list\r\n", ic.Conn.LocalAddr(), 366, ic.Nick, ircCh.Name)
+	_, err = ic.Conn.Write([]byte(endOfNames))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func handleJoin(ic *IRCConn, params string) {
+	if !validateWelcomeAndParameters("JOIN", params, 1, ic) {
+		return
+	}
+	chanName := params
+
+	ircCh, ok := lookupChannelByName(chanName)
+	if !ok {
+		// Create new channel
+		ircCh = newChannel(ic, chanName)
+	}
+
+	members := getChannelMembers(ircCh)
+	for _, v := range members {
+		if v == ic {
+			return
+		}
+	}
+	// Join channel
+	addUserToChannel(ic, ircCh)
+	// RPL_TOPIC
+	sendTopicReply(ic, ircCh)
+	// RPL_NAMREPLY & RPL_ENDOFNAMES
+	sendNamReply(ic, ircCh)
 }
 
 func checkAndSendWelcome(ic *IRCConn) {
