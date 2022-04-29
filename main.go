@@ -260,6 +260,7 @@ func lookupNickConn(nick string) (*IRCConn, bool) {
 }
 
 func handleNotice(ic *IRCConn, params string) {
+	// TODO handle channels
 	if !ic.Welcomed {
 		return
 	}
@@ -350,6 +351,22 @@ func handlePrivMsg(ic *IRCConn, params string) {
 
 		if !ok {
 			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Println("error sending nosuchnick reply")
+			}
+			return
+		}
+
+		memberOfChannel := false
+		for _, v := range getChannelMembers(channel) {
+			if v == ic {
+				memberOfChannel = true
+			}
+		}
+
+		if !memberOfChannel {
+			msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
 			_, err := ic.Conn.Write([]byte(msg))
 			if err != nil {
 				log.Println("error sending nosuchnick reply")
