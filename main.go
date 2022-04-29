@@ -381,7 +381,6 @@ func handleQUIT(ic *IRCConn, params string) {
 	}
 	connsMtx.Unlock()
 
-	// TODO close gracefully, cleaup
 	err = ic.Conn.Close()
 	if err != nil {
 		log.Println(err)
@@ -454,24 +453,10 @@ func checkAndSendWelcome(ic *IRCConn) {
 
 		var sb strings.Builder
 
-		sb.WriteString(fmt.Sprintf(
-			":%s 001 %s :Welcome to the Internet Relay Network %s!%s@%s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, ic.Nick, ic.User, ic.Conn.RemoteAddr().String()))
-
-		// RPL_YOURHOST
-		sb.WriteString(fmt.Sprintf(
-			":%s 002 %s :Your host is %s, running version %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION))
-
-		// RPL_CREATED
-		sb.WriteString(fmt.Sprintf(
-			":%s 003 %s :This server was created %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, timeCreated))
-
-		// RPL_MYINFO
-		sb.WriteString(fmt.Sprintf(
-			":%s 004 %s %s %s %s %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, ic.Conn.LocalAddr(), VERSION, "ao", "mtov"))
+		sb.WriteString(rpl_welcome(ic.Conn.LocalAddr().String(), ic.Nick, ic.User, ic.Conn.RemoteAddr().String()))
+		sb.WriteString(rpl_yourhost(ic.Conn.LocalAddr().String(), ic.Nick))
+		sb.WriteString(rpl_created(ic.Conn.LocalAddr().String(), ic.Nick))
+		sb.WriteString(rpl_myinfo(ic.Conn.LocalAddr().String(), ic.Nick, "ao", "mtov"))
 
 		_, err := ic.Conn.Write([]byte(sb.String()))
 		if err != nil {
@@ -529,6 +514,14 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 		log.Fatal(err)
 	}
 	return false
+}
+
+func writeMessage(ic *IRCConn, message string) error {
+	_, err := ic.Conn.Write([]byte(message))
+	if err != nil {
+		log.Println(err)
+	}
+	return err
 }
 
 func removePrefix(s string) string {
