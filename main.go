@@ -196,9 +196,6 @@ func handleWhoIs(ic *IRCConn, params string) {
 		return
 	}
 
-	//ntcMtx.Lock()
-	//targetIc, ok := nickToConn[targetNick]
-	//ntcMtx.Unlock()
 	targetIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
@@ -260,9 +257,6 @@ func handleNotice(ic *IRCConn, params string) {
 	targetNick, userMessage := splitParams[0], splitParams[1]
 
 	// get connection from targetNick
-	//ntcMtx.Lock()
-	//recipientIc, ok := nickToConn[targetNick]
-	//ntcMtx.Unlock()
 	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
@@ -337,9 +331,6 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	// get connection from targetNick
-	//ntcMtx.Lock()
-	//recipientIc, ok := nickToConn[targetNick]
-	//ntcMtx.Unlock()
 	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
@@ -407,8 +398,7 @@ func handleNick(ic *IRCConn, params string) {
 	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
 
-	//_, nickInUse := lookupNickConn(nick)
-	_, nickInUse := nickToConn[nick]
+	_, nickInUse := lookupNickConn(nick)
 	if nick != ic.Nick && nickInUse { // TODO what happens if they try to change their own nick?
 		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
 			ic.Conn.LocalAddr(), nick)
