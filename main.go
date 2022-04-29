@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	VERSION = "1.0.0"
+	VERSION  = "1.0.0"
+	layoutUS = "January 2, 2006"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 	ntcMtx           = sync.Mutex{}
 	connsMtx         = sync.Mutex{}
 	ircConns         = []*IRCConn{}
+	timeCreated      = time.Now().Format(layoutUS)
 )
 
 type IRCConn struct {
@@ -194,9 +196,7 @@ func handleWhoIs(ic *IRCConn, params string) {
 		return
 	}
 
-	ntcMtx.Lock()
-	targetIc, ok := nickToConn[targetNick]
-	ntcMtx.Unlock()
+	targetIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
 		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
@@ -237,6 +237,14 @@ func handleDefault(ic *IRCConn, params, command string) {
 	}
 }
 
+// Helper function to deal with the fact that nickToConn should be threadsafe
+func lookupNickConn(nick string) (*IRCConn, bool) {
+	ntcMtx.Lock()
+	recipientIc, ok := nickToConn[nick]
+	ntcMtx.Unlock()
+	return recipientIc, ok
+}
+
 func handleNotice(ic *IRCConn, params string) {
 	if !ic.Welcomed {
 		return
@@ -249,9 +257,7 @@ func handleNotice(ic *IRCConn, params string) {
 	targetNick, userMessage := splitParams[0], splitParams[1]
 
 	// get connection from targetNick
-	ntcMtx.Lock()
-	recipientIc, ok := nickToConn[targetNick]
-	ntcMtx.Unlock()
+	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
 		return
@@ -325,9 +331,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	targetNick, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	// get connection from targetNick
-	ntcMtx.Lock()
-	recipientIc, ok := nickToConn[targetNick]
-	ntcMtx.Unlock()
+	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
 		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
@@ -394,7 +398,7 @@ func handleNick(ic *IRCConn, params string) {
 	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
 
-	_, nickInUse := nickToConn[nick]
+	_, nickInUse := lookupNickConn(nick)
 	if nick != ic.Nick && nickInUse { // TODO what happens if they try to change their own nick?
 		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
 			ic.Conn.LocalAddr(), nick)
@@ -423,7 +427,7 @@ func handleUser(ic *IRCConn, params string) {
 		return
 	}
 
-	if ic.User != "" {
+	if ic.Welcomed && ic.User != "" {
 		msg := fmt.Sprintf(
 			":%s 463 :You may not reregister\r\n",
 			ic.Conn.LocalAddr())
@@ -474,7 +478,7 @@ func checkAndSendWelcome(ic *IRCConn) {
 		// RPL_CREATED
 		msg = fmt.Sprintf(
 			":%s 003 %s :This server was created %s\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, time.Now().String())
+			ic.Conn.LocalAddr(), ic.Nick, timeCreated)
 
 		log.Printf(msg)
 		_, err = ic.Conn.Write([]byte(msg))
