@@ -427,7 +427,7 @@ func handleUser(ic *IRCConn, params string) {
 		return
 	}
 
-	if ic.User != "" {
+	if ic.Welcomed && ic.User != "" {
 		msg := fmt.Sprintf(
 			":%s 463 :You may not reregister\r\n",
 			ic.Conn.LocalAddr())
