@@ -511,6 +511,64 @@ func newChannel(ic *IRCConn, chanName string) *IRCChan {
 	return &newChan
 }
 
+func sendTopicReply(ic *IRCConn, ircCh *IRCChan) {
+	// Send channel topic to ic
+	// if channel topic is not sent, send RPL_NOTOPIC instead
+	topic := "No topic is set"
+	rplCode := 332
+	if ircCh.Topic != "" {
+		topic = ircCh.Topic
+		rplCode = 331
+	}
+	topicReply := fmt.Sprintf(":%s %03d %s %s :%s\r\n", ic.Conn.LocalAddr(), rplCode, ic.Nick, ircCh.Name, topic)
+	_, err := ic.Conn.Write([]byte(topicReply))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func getChannelMembers(ircCh *IRCChan) []*IRCConn {
+	ircCh.Mtx.Lock()
+	lm := len(ircCh.Members)
+	members := make([]*IRCConn, lm, lm)
+	copy(members, ircCh.Members)
+	ircCh.Mtx.Unlock()
+	return members
+}
+
+func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
+	var sb strings.Builder
+	channelStatusIndicator := "=" // Using public indicator as default
+	sb.WriteString(fmt.Sprintf(":%s %03d %s %s %s :", ic.Conn.LocalAddr(), 353, ic.Nick,
+		channelStatusIndicator, ircCh.Name))
+	members := getChannelMembers(ircCh)
+	for i, v := range members {
+		n := v.Nick
+		if i != 0 {
+			sb.WriteString(" ")
+		}
+		present, ok := ircCh.OpNicks[n]
+		if present && ok {
+			// append "@" to indicate channel member is op
+			sb.WriteString("@")
+		}
+		// append channel member nick
+		sb.WriteString(n)
+	}
+	sb.WriteString("\r\n")
+	// Send RPL_NAMREPLY
+	_, err := ic.Conn.Write([]byte(sb.String()))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	endOfNames := fmt.Sprintf(":%s %03d %s %s :End of NAMES list\r\n", ic.Conn.LocalAddr(), 366, ic.Nick, ircCh.Name)
+	_, err = ic.Conn.Write([]byte(endOfNames))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func handleJoin(ic *IRCConn, params string) {
 	chanName := params
 
@@ -522,6 +580,10 @@ func handleJoin(ic *IRCConn, params string) {
 	// Join channel
 	addUserToChannel(ic, ircCh)
 	// TODO need to send other replies here
+	// RPL_TOPIC
+	sendTopicReply(ic, ircCh)
+	// RPL_NAMREPLY & RPL_ENDOFNAMES
+	sendNamReply(ic, ircCh)
 }
 
 func checkAndSendWelcome(ic *IRCConn) {
