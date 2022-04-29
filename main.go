@@ -21,9 +21,13 @@ var (
 	port             = flag.String("p", "8080", "http service address")
 	operatorPassword = flag.String("o", "pw", "operator password")
 	nickToConn       = map[string]*IRCConn{}
-	ntcMtx           = sync.Mutex{}
+	nameToChan       = map[string]*IRCChan{}
+	nickToConnMtx    = sync.Mutex{}
+	nameToChanMtx    = sync.Mutex{}
 	connsMtx         = sync.Mutex{}
+	chansMtx         = sync.Mutex{}
 	ircConns         = []*IRCConn{}
+	ircChans         = []*IRCChan{}
 	timeCreated      = time.Now().Format(layoutUS)
 )
 
@@ -33,6 +37,14 @@ type IRCConn struct {
 	Conn     net.Conn
 	RealName string
 	Welcomed bool
+}
+
+type IRCChan struct {
+	Mtx     sync.Mutex
+	Name    string
+	Topic   string
+	OpNicks map[string]bool
+	Members []*IRCConn
 }
 
 func main() {
@@ -125,6 +137,8 @@ func handleConnection(ic *IRCConn) {
 			handleWhoIs(ic, params)
 		case "LUSERS":
 			handleLUsers(ic, params)
+		case "JOIN":
+			handleJoin(ic, params)
 		case "":
 			break
 		default:
@@ -239,9 +253,9 @@ func handleDefault(ic *IRCConn, params, command string) {
 
 // Helper function to deal with the fact that nickToConn should be threadsafe
 func lookupNickConn(nick string) (*IRCConn, bool) {
-	ntcMtx.Lock()
+	nickToConnMtx.Lock()
 	recipientIc, ok := nickToConn[nick]
-	ntcMtx.Unlock()
+	nickToConnMtx.Unlock()
 	return recipientIc, ok
 }
 
@@ -370,9 +384,9 @@ func handleQuit(ic *IRCConn, params string) {
 		log.Fatal(err)
 	}
 
-	ntcMtx.Lock()
+	nickToConnMtx.Lock()
 	delete(nickToConn, ic.Nick)
-	ntcMtx.Unlock()
+	nickToConnMtx.Unlock()
 
 	connsMtx.Lock()
 	for idx, conn := range ircConns {
@@ -410,13 +424,13 @@ func handleNick(ic *IRCConn, params string) {
 	}
 
 	// if Nick has already been set
-	ntcMtx.Lock()
+	nickToConnMtx.Lock()
 	if prevNick != "*" {
 		delete(nickToConn, prevNick)
 	}
 
 	nickToConn[nick] = ic
-	ntcMtx.Unlock()
+	nickToConnMtx.Unlock()
 	ic.Nick = nick
 
 	checkAndSendWelcome(ic)
@@ -449,6 +463,65 @@ func handleUser(ic *IRCConn, params string) {
 	}
 
 	checkAndSendWelcome(ic)
+}
+
+func lookupChannelByName(name string) (*IRCChan, bool) {
+	nameToChanMtx.Lock()
+	ircCh, ok := nameToChan[name]
+	nameToChanMtx.Unlock()
+	return ircCh, ok
+}
+
+func addUserToChannel(ic *IRCConn, ircCh *IRCChan) {
+	ircCh.Mtx.Lock()
+	ircCh.Members = append(ircCh.Members, ic)
+	lm := len(ircCh.Members)
+	var members = make([]*IRCConn, lm, lm)
+	copy(members, ircCh.Members)
+	ircCh.Mtx.Unlock()
+	joinMsg := fmt.Sprintf(":%s!%s@%s JOIN %s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), ircCh.Name)
+	for _, v := range members {
+		v := v
+		go func() {
+			_, err := v.Conn.Write([]byte(joinMsg))
+
+			if err != nil {
+				log.Fatal(err)
+			}
+		}()
+	}
+}
+
+func newChannel(ic *IRCConn, chanName string) *IRCChan {
+	newChan := IRCChan{
+		Mtx:     sync.Mutex{},
+		Name:    chanName,
+		Topic:   "",
+		OpNicks: make(map[string]bool),
+		Members: []*IRCConn{},
+	}
+	newChan.OpNicks[ic.Nick] = true
+	chansMtx.Lock()
+	ircChans = append(ircChans, &newChan)
+	chansMtx.Unlock()
+
+	nameToChanMtx.Lock()
+	nameToChan[chanName] = &newChan
+	nameToChanMtx.Unlock()
+	return &newChan
+}
+
+func handleJoin(ic *IRCConn, params string) {
+	chanName := params
+
+	ircCh, ok := lookupChannelByName(chanName)
+	if !ok {
+		// Create new channel
+		ircCh = newChannel(ic, chanName)
+	}
+	// Join channel
+	addUserToChannel(ic, ircCh)
+	// TODO need to send other replies here
 }
 
 func checkAndSendWelcome(ic *IRCConn) {
