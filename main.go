@@ -530,6 +530,8 @@ func sendTopicReply(ic *IRCConn, ircCh *IRCChan) {
 	if ircCh.Topic != "" {
 		topic = ircCh.Topic
 		rplCode = 331
+	} else {
+		return
 	}
 	topicReply := fmt.Sprintf(":%s %03d %s %s :%s\r\n", ic.Conn.LocalAddr(), rplCode, ic.Nick, ircCh.Name, topic)
 	_, err := ic.Conn.Write([]byte(topicReply))
@@ -581,12 +583,22 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 }
 
 func handleJoin(ic *IRCConn, params string) {
+	if !validateWelcomeAndParameters("JOIN", params, 1, ic) {
+		return
+	}
 	chanName := params
 
 	ircCh, ok := lookupChannelByName(chanName)
 	if !ok {
 		// Create new channel
 		ircCh = newChannel(ic, chanName)
+	}
+
+	members := getChannelMembers(ircCh)
+	for _, v := range members {
+		if v == ic {
+			return
+		}
 	}
 	// Join channel
 	addUserToChannel(ic, ircCh)
