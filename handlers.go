@@ -505,31 +505,24 @@ func handlePart(ic *IRCConn, params string) {
 	}
 
 	if !memberOfChannel {
-		msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
-			log.Println("error sending nosuchnick reply")
+			log.Println("error sending ERR_NOTONCHANNEL reply")
 		}
 		return
 	}
-	partingMessage := ""
 
+	msg := ""
 	if len(splitParams) == 2 {
-		// params contains parting message
-		partingMessage = removePrefix(splitParams[1])
-		// send parting message to everyone on channel
-	} else if len(splitParams) == 1 {
-		partingMessage = fmt.Sprintf("%s", ic.Nick)
-
+		msg = fmt.Sprintf(":%s!%s@%s PART %s :%s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName, removePrefix(splitParams[1]))
 	} else {
-		// Too many params or too few
+		msg = fmt.Sprintf(":%s!%s@%s PART %s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName)
 	}
 
-	msg := fmt.Sprintf(":%s!%s@%s PART %s :%s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName, partingMessage)
 	sendMessageToChannel(ic, msg, ircCh, true)
 
 	numChannelMembers := 0
-
 	// Remove user from channel
 	ircCh.Mtx.Lock()
 	memberIndex := 0
