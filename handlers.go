@@ -564,19 +564,6 @@ func checkAndSendWelcome(ic *IRCConn) {
 }
 
 func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
-	if command != "NICK" && command != "USER" && !ic.Welcomed {
-		msg := fmt.Sprintf(
-			":%s 451 %s :You have not registered\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
-
-		log.Printf(msg)
-		_, err := ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
-		}
-		return false
-	}
-
 	paramVals := strings.Fields(params)
 	if len(paramVals) >= expectedNumParams {
 		return true

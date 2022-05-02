@@ -30,59 +30,70 @@ var (
 	timeCreated      = time.Now().Format(layoutUS)
 	commandMap       = map[string]*IRCCommand{
 		"NICK": {
-			handler:     handleNick,
-			minParams:   1,
-			silentReply: false,
+			handler:          handleNick,
+			minParams:        1,
+			disableAutoReply: false,
+			welcomeRequired:  false,
 		},
 		"USER": {
-			handler:     handleUser,
-			minParams:   4,
-			silentReply: false,
+			handler:          handleUser,
+			minParams:        4,
+			disableAutoReply: false,
+			welcomeRequired:  false,
 		},
 		"QUIT": {
-			handler:     handleQuit,
-			minParams:   0,
-			silentReply: false,
+			handler:          handleQuit,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 		"PRIVMSG": {
-			handler:     handlePrivMsg,
-			minParams:   2,
-			silentReply: false,
+			handler:          handlePrivMsg,
+			minParams:        2,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 		"PING": {
-			handler:     handlePing,
-			minParams:   0,
-			silentReply: false,
+			handler:          handlePing,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 		"PONG": {
-			handler:     handlePong,
-			minParams:   0,
-			silentReply: false,
+			handler:          handlePong,
+			minParams:        0,
+			disableAutoReply: true,
+			welcomeRequired:  true,
 		},
 		"MOTD": {
-			handler:     handleMotd,
-			minParams:   0,
-			silentReply: false,
+			handler:          handleMotd,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 		"NOTICE": {
-			handler:     handleNotice,
-			minParams:   2,
-			silentReply: true,
+			handler:          handleNotice,
+			minParams:        2,
+			disableAutoReply: true,
+			welcomeRequired:  true,
 		},
 		"WHOIS": {
-			handler:     handleWhoIs,
-			minParams:   0,
-			silentReply: false,
+			handler:          handleWhoIs,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 		"LUSERS": {
-			handler:     handleLUsers,
-			minParams:   0,
-			silentReply: false,
+			handler:          handleLUsers,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 		"JOIN": {
-			handler:     handleJoin,
-			minParams:   1,
-			silentReply: false,
+			handler:          handleJoin,
+			minParams:        1,
+			disableAutoReply: false,
+			welcomeRequired:  true,
 		},
 	}
 )
@@ -104,9 +115,10 @@ type IRCChan struct {
 }
 
 type IRCCommand struct {
-	minParams   int
-	handler     func(ic *IRCConn, params string)
-	silentReply bool
+	minParams        int
+	handler          func(ic *IRCConn, params string)
+	disableAutoReply bool
+	welcomeRequired  bool
 }
 
 func main() {
@@ -182,14 +194,40 @@ func handleConnection(ic *IRCConn) {
 		if !ok {
 			log.Println("not ok")
 			handleDefault(ic, params, command)
-		} else {
-			ircCommand.handler(ic, params)
+			continue
 		}
+
+		if !validateWelcome(*ircCommand, ic) {
+			continue
+		}
+
+		ircCommand.handler(ic, params)
 	}
 	err := scanner.Err()
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
 	}
+}
+
+func validateWelcome(command IRCCommand, ic *IRCConn) bool {
+	if command.welcomeRequired && !ic.Welcomed {
+		if command.disableAutoReply {
+			return false
+		}
+
+		msg := fmt.Sprintf(
+			":%s 451 %s :You have not registered\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
+
+		log.Printf(msg)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return false
+	}
+
+	return true
 }
 
 func removePrefix(s string) string {
