@@ -18,17 +18,18 @@ const (
 )
 
 var (
-	port             = flag.String("p", "8080", "http service address")
-	operatorPassword = flag.String("o", "pw", "operator password")
-	nickToConn       = map[string]*IRCConn{}
-	nameToChan       = map[string]*IRCChan{}
-	nickToConnMtx    = sync.Mutex{}
-	nameToChanMtx    = sync.Mutex{}
-	connsMtx         = sync.Mutex{}
-	chansMtx         = sync.Mutex{}
-	ircConns         = []*IRCConn{}
-	ircChans         = []*IRCChan{}
-	timeCreated      = time.Now().Format(layoutUS)
+	port              = flag.String("p", "8080", "http service address")
+	operatorPassword  = flag.String("o", "pw", "operator password")
+	nickToConn        = map[string]*IRCConn{}
+	nameToChan        = map[string]*IRCChan{}
+	nickToConnMtx     = sync.Mutex{}
+	nameToChanMtx     = sync.Mutex{}
+	connsMtx          = sync.Mutex{}
+	chansMtx          = sync.Mutex{}
+	ircConns          = []*IRCConn{}
+	ircChans          = []*IRCChan{}
+	timeCreated       = time.Now().Format(layoutUS)
+	supportedCommands = []string{"NICK", "USER", "QUIT", "PRIVMSG", "PING", "PONG", "MOTD", "NOTICE", "WHOIS", "LUSERS", "JOIN"}
 )
 
 type IRCConn struct {
@@ -111,6 +112,10 @@ func handleConnection(ic *IRCConn) {
 
 		command := split_message[0]
 
+		if !validateWelcome(command, ic) {
+			return
+		}
+
 		var params string = ""
 		if len(split_message) >= 2 {
 			params = strings.Trim(split_message[1], " ")
@@ -153,7 +158,7 @@ func handleConnection(ic *IRCConn) {
 }
 
 func handleLUsers(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("LUSERS", params, 0, ic) {
+	if !validateWelcomeAndParameters("LUSERS", params, 0, ic, true) {
 		return
 	}
 
@@ -260,7 +265,6 @@ func lookupNickConn(nick string) (*IRCConn, bool) {
 }
 
 func handleNotice(ic *IRCConn, params string) {
-	// TODO handle channels
 	if !ic.Welcomed {
 		return
 	}
@@ -269,23 +273,53 @@ func handleNotice(ic *IRCConn, params string) {
 	if len(splitParams) < 2 {
 		return
 	}
-	targetNick, userMessage := splitParams[0], splitParams[1]
+	target, userMessage := splitParams[0], splitParams[1]
 
-	// get connection from targetNick
-	recipientIc, ok := lookupNickConn(targetNick)
+	if strings.HasPrefix(target, "#") {
+		// get connection from targetNick
+		channel, ok := lookupChannelByName(target)
 
-	if !ok {
-		return
+		if !ok {
+			// no such channel
+			return
+		}
+
+		memberOfChannel := false
+		for _, v := range getChannelMembers(channel) {
+			if v == ic {
+				memberOfChannel = true
+			}
+		}
+
+		if !memberOfChannel {
+			// cannot send to channel
+			return
+		}
+
+		msg := fmt.Sprintf(
+			":%s!%s@%s NOTICE %s %s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
+		if len(msg) > 512 {
+			msg = msg[:510] + "\r\n"
+		}
+
+		sendMessageToChannel(ic, msg, channel)
+	} else {
+		// get connection from targetNick
+		recipientIc, ok := lookupNickConn(target)
+
+		if !ok {
+			return
+		}
+
+		msg := fmt.Sprintf(
+			":%s!%s@%s NOTICE %s %s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
+		_, err := recipientIc.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-
-	msg := fmt.Sprintf(
-		":%s!%s@%s NOTICE %s %s\r\n",
-		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
-	_, err := recipientIc.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Fatal(err)
-	}
-
 }
 
 func handleMotd(ic *IRCConn, params string) {
@@ -338,7 +372,7 @@ func handlePing(ic *IRCConn, params string) {
 }
 
 func handlePrivMsg(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic) {
+	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic, true) {
 		return
 	}
 
@@ -409,7 +443,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 }
 
 func handleQuit(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("QUIT", params, 0, ic) {
+	if !validateWelcomeAndParameters("QUIT", params, 0, ic, true) {
 		return
 	}
 
@@ -445,7 +479,7 @@ func handleQuit(ic *IRCConn, params string) {
 }
 
 func handleNick(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("NICK", params, 1, ic) {
+	if !validateWelcomeAndParameters("NICK", params, 1, ic, true) {
 		return
 	}
 
@@ -477,7 +511,7 @@ func handleNick(ic *IRCConn, params string) {
 }
 
 func handleUser(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("USER", params, 4, ic) {
+	if !validateWelcomeAndParameters("USER", params, 4, ic, true) {
 		return
 	}
 
@@ -623,7 +657,7 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 }
 
 func handleJoin(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("JOIN", params, 1, ic) {
+	if !validateWelcomeAndParameters("JOIN", params, 1, ic, true) {
 		return
 	}
 	chanName := params
@@ -699,23 +733,61 @@ func checkAndSendWelcome(ic *IRCConn) {
 	}
 }
 
-func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
-	if command != "NICK" && command != "USER" && !ic.Welcomed {
-		msg := fmt.Sprintf(
-			":%s 451 %s :You have not registered\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
-
-		log.Printf(msg)
-		_, err := ic.Conn.Write([]byte(msg))
-		if err != nil {
-			log.Fatal(err)
+func validateWelcome(command string, ic *IRCConn) bool {
+	commandIsSupported := false
+	for _, supportedCommand := range supportedCommands {
+		if command == supportedCommand {
+			commandIsSupported = true
 		}
+	}
+
+	if !commandIsSupported {
+		return true
+	}
+
+	if command != "NICK" && command != "USER" && !ic.Welcomed {
+		// NOTICE returns silently
+		if command != "NOTICE" {
+			msg := fmt.Sprintf(
+				":%s 451 %s :You have not registered\r\n",
+				ic.Conn.LocalAddr(), ic.Nick)
+
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		return false
+	}
+
+	return true
+}
+
+func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn, silentReturn bool) bool {
+	if command != "NICK" && command != "USER" && !ic.Welcomed {
+
+		if !silentReturn {
+			msg := fmt.Sprintf(
+				":%s 451 %s :You have not registered\r\n",
+				ic.Conn.LocalAddr(), ic.Nick)
+
+			_, err := ic.Conn.Write([]byte(msg))
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+
 		return false
 	}
 
 	paramVals := strings.Fields(params)
 	if len(paramVals) >= expectedNumParams {
 		return true
+	}
+
+	if silentReturn {
+		return false
 	}
 
 	var msg string
