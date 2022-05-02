@@ -9,7 +9,7 @@ import (
 )
 
 func handleLUsers(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("LUSERS", params, 0, ic) {
+	if !validateParameters("LUSERS", params, 0, ic) {
 		return
 	}
 
@@ -56,10 +56,6 @@ func writeLUsers(ic *IRCConn) {
 }
 
 func handleWhoIs(ic *IRCConn, params string) {
-	if !ic.Welcomed {
-		return
-	}
-
 	targetNick := strings.Trim(params, " ")
 
 	if targetNick == "" {
@@ -96,13 +92,10 @@ func handleWhoIs(ic *IRCConn, params string) {
 }
 
 func handleDefault(ic *IRCConn, params, command string) {
-	if command == "" {
+	if command == "" || !ic.Welcomed {
 		return
 	}
 
-	if !ic.Welcomed {
-		return
-	}
 	msg := fmt.Sprintf(":%s 421 %s %s :Unknown command\r\n",
 		ic.Conn.LocalAddr(), ic.Nick, command)
 	_, err := ic.Conn.Write([]byte(msg))
@@ -121,10 +114,6 @@ func lookupNickConn(nick string) (*IRCConn, bool) {
 
 func handleNotice(ic *IRCConn, params string) {
 	// TODO handle channels
-	if !ic.Welcomed {
-		return
-	}
-
 	splitParams := strings.SplitN(params, " ", 2)
 	if len(splitParams) < 2 {
 		return
@@ -202,7 +191,7 @@ func handlePong(ic *IRCConn, params string) {
 }
 
 func handlePrivMsg(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic) {
+	if !validateParameters("PRIVMSG", params, 2, ic) {
 		return
 	}
 
@@ -273,7 +262,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 }
 
 func handleQuit(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("QUIT", params, 0, ic) {
+	if !validateParameters("QUIT", params, 0, ic) {
 		return
 	}
 
@@ -309,7 +298,7 @@ func handleQuit(ic *IRCConn, params string) {
 }
 
 func handleNick(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("NICK", params, 1, ic) {
+	if !validateParameters("NICK", params, 1, ic) {
 		return
 	}
 
@@ -341,7 +330,7 @@ func handleNick(ic *IRCConn, params string) {
 }
 
 func handleUser(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("USER", params, 4, ic) {
+	if !validateParameters("USER", params, 4, ic) {
 		return
 	}
 
@@ -487,7 +476,7 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 }
 
 func handleJoin(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("JOIN", params, 1, ic) {
+	if !validateParameters("JOIN", params, 1, ic) {
 		return
 	}
 	chanName := params
@@ -561,37 +550,4 @@ func checkAndSendWelcome(ic *IRCConn) {
 		writeLUsers(ic)
 		writeMotd(ic)
 	}
-}
-
-func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
-	paramVals := strings.Fields(params)
-	if len(paramVals) >= expectedNumParams {
-		return true
-	}
-
-	var msg string
-	if command == "NICK" {
-		msg = fmt.Sprintf(
-			":%s 431 %s :No nickname given\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
-	} else if command == "PRIVMSG" && len(paramVals) == 0 {
-		msg = fmt.Sprintf(
-			":%s 411 %s :No recipient given (%s)\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, command)
-	} else if command == "PRIVMSG" && len(paramVals) == 1 {
-		msg = fmt.Sprintf(
-			":%s 412 %s :No text to send\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
-	} else {
-		msg = fmt.Sprintf(
-			":%s 461 %s %s :Not enough parameters\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, command)
-	}
-
-	log.Printf(msg)
-	_, err := ic.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Fatal(err)
-	}
-	return false
 }

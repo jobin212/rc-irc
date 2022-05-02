@@ -230,6 +230,39 @@ func validateWelcome(command IRCCommand, ic *IRCConn) bool {
 	return true
 }
 
+func validateParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
+	paramVals := strings.Fields(params)
+	if len(paramVals) >= expectedNumParams {
+		return true
+	}
+
+	var msg string
+	if command == "NICK" {
+		msg = fmt.Sprintf(
+			":%s 431 %s :No nickname given\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
+	} else if command == "PRIVMSG" && len(paramVals) == 0 {
+		msg = fmt.Sprintf(
+			":%s 411 %s :No recipient given (%s)\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, command)
+	} else if command == "PRIVMSG" && len(paramVals) == 1 {
+		msg = fmt.Sprintf(
+			":%s 412 %s :No text to send\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
+	} else {
+		msg = fmt.Sprintf(
+			":%s 461 %s %s :Not enough parameters\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, command)
+	}
+
+	log.Printf(msg)
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return false
+}
+
 func removePrefix(s string) string {
 	split := strings.SplitN(s, ":", 2)
 	if len(split) == 1 {
