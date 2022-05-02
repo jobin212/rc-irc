@@ -16,6 +16,8 @@ const (
 	layoutUS = "January 2, 2006"
 )
 
+// TODO - handle improperly closed connections cleanly
+
 var (
 	port             = flag.String("p", "8080", "http service address")
 	operatorPassword = flag.String("o", "pw", "operator password")
@@ -33,7 +35,7 @@ var (
 			handler:          handleNick,
 			minParams:        1,
 			disableAutoReply: false,
-			welcomeRequired:  false,
+			welcomeRequired:  false, // does the user have to be registered before trying to run this command
 		},
 		"USER": {
 			handler:          handleUser,
@@ -91,6 +93,12 @@ var (
 		},
 		"JOIN": {
 			handler:          handleJoin,
+			minParams:        1,
+			disableAutoReply: false,
+			welcomeRequired:  true,
+		},
+		"PART": {
+			handler:          handlePart,
 			minParams:        1,
 			disableAutoReply: false,
 			welcomeRequired:  true,

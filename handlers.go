@@ -16,6 +16,11 @@ func handleLUsers(ic *IRCConn, params string) {
 	writeLUsers(ic)
 }
 
+//func remove(s []int, i int) []int {
+//    s[i] = s[len(s)-1]
+//    return s[:len(s)-1]
+//}
+
 func writeLUsers(ic *IRCConn) {
 	numServers, numServices, numOperators, numChannels := 1, 0, 0, 0
 	numUsers, numUnknownConnections, numClients := 0, 0, 0
@@ -234,7 +239,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 			msg = msg[:510] + "\r\n"
 		}
 
-		sendMessageToChannel(ic, msg, channel)
+		sendMessageToChannel(ic, msg, channel, false)
 	} else {
 		// get connection from targetNick
 		recipientIc, ok := lookupNickConn(target)
@@ -365,11 +370,11 @@ func lookupChannelByName(name string) (*IRCChan, bool) {
 	return ircCh, ok
 }
 
-func sendMessageToChannel(senderIC *IRCConn, msg string, ircCh *IRCChan) {
+func sendMessageToChannel(senderIC *IRCConn, msg string, ircCh *IRCChan, sendToSelf bool) {
 	members := getChannelMembers(ircCh)
 	for _, v := range members {
 		v := v
-		if v != senderIC {
+		if sendToSelf || v != senderIC {
 			go func() {
 				_, err := v.Conn.Write([]byte(msg))
 
@@ -389,7 +394,7 @@ func addUserToChannel(ic *IRCConn, ircCh *IRCChan) {
 	copy(members, ircCh.Members)
 	ircCh.Mtx.Unlock()
 	joinMsg := fmt.Sprintf(":%s!%s@%s JOIN %s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), ircCh.Name)
-	sendMessageToChannel(ic, joinMsg, ircCh)
+	sendMessageToChannel(ic, joinMsg, ircCh, false)
 	_, err := ic.Conn.Write([]byte(joinMsg))
 	if err != nil {
 		log.Fatal(err)
@@ -472,6 +477,94 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 	_, err = ic.Conn.Write([]byte(endOfNames))
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func handlePart(ic *IRCConn, params string) {
+	if !validateParameters("PART", params, 1, ic) {
+		return
+	}
+	splitParams := strings.SplitN(params, " ", 2) // maybe split on colon?
+	chanName := splitParams[0]
+	ircCh, ok := lookupChannelByName(chanName)
+	if !ok {
+		// ERR Channel doesn't exist
+		msg := fmt.Sprintf(":%s 403 %s %s :No such channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending nosuchnick reply")
+		}
+		return
+	}
+
+	memberOfChannel := false
+	for _, v := range getChannelMembers(ircCh) {
+		if v == ic {
+			memberOfChannel = true
+		}
+	}
+
+	if !memberOfChannel {
+		msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending nosuchnick reply")
+		}
+		return
+	}
+	partingMessage := ""
+
+	if len(splitParams) == 2 {
+		// params contains parting message
+		partingMessage = removePrefix(splitParams[1])
+		// send parting message to everyone on channel
+	} else if len(splitParams) == 1 {
+		partingMessage = fmt.Sprintf("%s", ic.Nick)
+
+	} else {
+		// Too many params or too few
+	}
+
+	msg := fmt.Sprintf("%s!%s@%s PART %s :%s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName, partingMessage)
+	sendMessageToChannel(ic, msg, ircCh, true)
+
+	numChannelMembers := 0
+
+	// Remove user from channel
+	ircCh.Mtx.Lock()
+	memberIndex := 0
+	for i, v := range ircCh.Members {
+		if v == ic {
+			memberIndex = i
+			break
+		}
+	}
+	ircCh.Members[memberIndex] = ircCh.Members[len(ircCh.Members)-1]
+	ircCh.Members = ircCh.Members[:len(ircCh.Members)-1]
+
+	if ircCh.OpNicks[ic.Nick] {
+		delete(ircCh.OpNicks, ic.Nick)
+	}
+
+	// Delete channel if nobody in it
+	numChannelMembers = len(ircCh.Members)
+	ircCh.Mtx.Unlock()
+	channelIndex := 0
+	if numChannelMembers == 0 {
+		nameToChanMtx.Lock()
+		chansMtx.Lock()
+		delete(nameToChan, chanName)
+
+		for i, v := range ircChans {
+			if v == ircCh {
+				channelIndex = i
+				break
+			}
+		}
+		ircChans[channelIndex] = ircChans[len(ircChans)-1]
+		ircChans = ircChans[:len(ircChans)-1]
+		chansMtx.Unlock()
+		nameToChanMtx.Unlock()
 	}
 }
 
