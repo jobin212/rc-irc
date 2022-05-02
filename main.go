@@ -158,7 +158,7 @@ func handleConnection(ic *IRCConn) {
 }
 
 func handleLUsers(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("LUSERS", params, 0, ic, true) {
+	if !validateWelcomeAndParameters("LUSERS", params, 0, ic) {
 		return
 	}
 
@@ -372,7 +372,7 @@ func handlePing(ic *IRCConn, params string) {
 }
 
 func handlePrivMsg(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic, true) {
+	if !validateWelcomeAndParameters("PRIVMSG", params, 2, ic) {
 		return
 	}
 
@@ -443,7 +443,7 @@ func handlePrivMsg(ic *IRCConn, params string) {
 }
 
 func handleQuit(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("QUIT", params, 0, ic, true) {
+	if !validateWelcomeAndParameters("QUIT", params, 0, ic) {
 		return
 	}
 
@@ -479,7 +479,7 @@ func handleQuit(ic *IRCConn, params string) {
 }
 
 func handleNick(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("NICK", params, 1, ic, true) {
+	if !validateWelcomeAndParameters("NICK", params, 1, ic) {
 		return
 	}
 
@@ -511,7 +511,7 @@ func handleNick(ic *IRCConn, params string) {
 }
 
 func handleUser(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("USER", params, 4, ic, true) {
+	if !validateWelcomeAndParameters("USER", params, 4, ic) {
 		return
 	}
 
@@ -657,7 +657,7 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 }
 
 func handleJoin(ic *IRCConn, params string) {
-	if !validateWelcomeAndParameters("JOIN", params, 1, ic, true) {
+	if !validateWelcomeAndParameters("JOIN", params, 1, ic) {
 		return
 	}
 	chanName := params
@@ -764,18 +764,16 @@ func validateWelcome(command string, ic *IRCConn) bool {
 	return true
 }
 
-func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn, silentReturn bool) bool {
+func validateWelcomeAndParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
 	if command != "NICK" && command != "USER" && !ic.Welcomed {
 
-		if !silentReturn {
-			msg := fmt.Sprintf(
-				":%s 451 %s :You have not registered\r\n",
-				ic.Conn.LocalAddr(), ic.Nick)
+		msg := fmt.Sprintf(
+			":%s 451 %s :You have not registered\r\n",
+			ic.Conn.LocalAddr(), ic.Nick)
 
-			_, err := ic.Conn.Write([]byte(msg))
-			if err != nil {
-				log.Fatal(err)
-			}
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Fatal(err)
 		}
 
 		return false
@@ -784,10 +782,6 @@ func validateWelcomeAndParameters(command, params string, expectedNumParams int,
 	paramVals := strings.Fields(params)
 	if len(paramVals) >= expectedNumParams {
 		return true
-	}
-
-	if silentReturn {
-		return false
 	}
 
 	var msg string
