@@ -109,15 +109,22 @@ var (
 			disableAutoReply: false,
 			welcomeRequired:  true,
 		},
+		"AWAY": {
+			handler:          handleAway,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
+		},
 	}
 )
 
 type IRCConn struct {
-	User     string
-	Nick     string
-	Conn     net.Conn
-	RealName string
-	Welcomed bool
+	User        string
+	Nick        string
+	Conn        net.Conn
+	RealName    string
+	Welcomed    bool
+	AwayMessage string
 }
 
 type IRCChan struct {
