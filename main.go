@@ -103,6 +103,12 @@ var (
 			disableAutoReply: false,
 			welcomeRequired:  true,
 		},
+		"TOPIC": {
+			handler:          handleTopic,
+			minParams:        1,
+			disableAutoReply: false,
+			welcomeRequired:  true,
+		},
 	}
 )
 

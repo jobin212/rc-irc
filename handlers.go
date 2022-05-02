@@ -363,6 +363,71 @@ func handleUser(ic *IRCConn, params string) {
 	checkAndSendWelcome(ic)
 }
 
+func handleTopic(ic *IRCConn, params string) {
+	if !validateParameters("TOPIC", params, 1, ic) {
+		return
+	}
+
+	splitParams := strings.SplitN(params, " ", 2)
+
+	chanName := splitParams[0]
+	newTopic := ""
+	if len(splitParams) >= 2 {
+		newTopic = removePrefix(splitParams[1])
+	}
+
+	ircCh, ok := lookupChannelByName(chanName)
+	if !ok {
+		// ERR Channel doesn't exist
+		msg := fmt.Sprintf(":%s 403 %s %s :No such channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending nosuchnick reply")
+		}
+		return
+	}
+
+	memberOfChannel := false
+	for _, v := range getChannelMembers(ircCh) {
+		if v == ic {
+			memberOfChannel = true
+		}
+	}
+
+	if !memberOfChannel {
+		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending ERR_NOTONCHANNEL reply")
+		}
+		return
+	}
+
+	ircCh.Mtx.Lock()
+
+	var msg string
+	if newTopic != "" {
+		// update channel topic
+		ircCh.Topic = newTopic
+		msg = fmt.Sprintf(":%s!%s@%s TOPIC %s :%s\r\n",
+			ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName, ircCh.Topic)
+	} else {
+		// read channel topic
+		if ircCh.Topic == "" {
+			// RPL_NOTOPIC
+			msg = fmt.Sprintf(":%s 331 %s %s :No topic is set\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		} else {
+			// RPL_TOPIC
+			msg = fmt.Sprintf(":%s 332 %s %s :%s\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName, ircCh.Topic)
+		}
+	}
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Println("error sending TOPIC reply")
+	}
+	ircCh.Mtx.Unlock()
+}
+
 func lookupChannelByName(name string) (*IRCChan, bool) {
 	nameToChanMtx.Lock()
 	ircCh, ok := nameToChan[name]
