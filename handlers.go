@@ -525,7 +525,7 @@ func handlePart(ic *IRCConn, params string) {
 		// Too many params or too few
 	}
 
-	msg := fmt.Sprintf("%s!%s@%s PART %s :%s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName, partingMessage)
+	msg := fmt.Sprintf(":%s!%s@%s PART %s :%s\r\n", ic.Nick, ic.User, ic.Conn.RemoteAddr(), chanName, partingMessage)
 	sendMessageToChannel(ic, msg, ircCh, true)
 
 	numChannelMembers := 0
