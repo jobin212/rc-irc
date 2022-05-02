@@ -379,10 +379,17 @@ func handleTopic(ic *IRCConn, params string) {
 	ircCh, ok := lookupChannelByName(chanName)
 	if !ok {
 		// ERR Channel doesn't exist
-		msg := fmt.Sprintf(":%s 403 %s %s :No such channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		//msg := fmt.Sprintf(":%s 403 %s %s :No such channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		//_, err := ic.Conn.Write([]byte(msg))
+		//if err != nil {
+		//	log.Println("error sending nosuchnick reply")
+		//}
+		//return
+
+		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
-			log.Println("error sending nosuchnick reply")
+			log.Println("error sending ERR_NOTONCHANNEL reply")
 		}
 		return
 	}
@@ -421,11 +428,16 @@ func handleTopic(ic *IRCConn, params string) {
 			msg = fmt.Sprintf(":%s 332 %s %s :%s\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName, ircCh.Topic)
 		}
 	}
-	_, err := ic.Conn.Write([]byte(msg))
-	if err != nil {
-		log.Println("error sending TOPIC reply")
-	}
 	ircCh.Mtx.Unlock()
+
+	if newTopic != "" {
+		sendMessageToChannel(ic, msg, ircCh, true)
+	} else {
+		_, err := ic.Conn.Write([]byte(msg))
+		if err != nil {
+			log.Println("error sending TOPIC reply")
+		}
+	}
 }
 
 func lookupChannelByName(name string) (*IRCChan, bool) {
@@ -489,10 +501,10 @@ func sendTopicReply(ic *IRCConn, ircCh *IRCChan) {
 	// Send channel topic to ic
 	// if channel topic is not sent, send RPL_NOTOPIC instead
 	topic := "No topic is set"
-	rplCode := 332
+	rplCode := 331
 	if ircCh.Topic != "" {
 		topic = ircCh.Topic
-		rplCode = 331
+		rplCode = 332
 	} else {
 		return
 	}
