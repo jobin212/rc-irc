@@ -263,6 +263,15 @@ func handlePrivMsg(ic *IRCConn, params string) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		if recipientIc.AwayMessage != "" {
+			awayAutoReply := fmt.Sprintf(":%s!%s@%s 301 %s %s :%s\r\n",
+				recipientIc.Nick, recipientIc.User, recipientIc.Conn.RemoteAddr(), ic.Nick, recipientIc.Nick, recipientIc.AwayMessage)
+			_, err := ic.Conn.Write([]byte(awayAutoReply))
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 	}
 }
 
@@ -437,6 +446,23 @@ func handleTopic(ic *IRCConn, params string) {
 		if err != nil {
 			log.Println("error sending TOPIC reply")
 		}
+	}
+}
+
+func handleAway(ic *IRCConn, params string) {
+	awayMessage := removePrefix(strings.Trim(params, " "))
+	var msg string
+	if awayMessage == "" {
+		// clear away message
+		ic.AwayMessage = ""
+		msg = fmt.Sprintf(":%s 305 %s :You are no longer marked as being away\r\n", ic.Conn.LocalAddr(), ic.Nick)
+	} else {
+		ic.AwayMessage = awayMessage
+		msg = fmt.Sprintf(":%s 306 %s :You have been marked as being away\r\n", ic.Conn.LocalAddr(), ic.Nick)
+	}
+	_, err := ic.Conn.Write([]byte(msg))
+	if err != nil {
+		log.Println("error sending AWAY reply")
 	}
 }
 
