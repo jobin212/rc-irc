@@ -690,6 +690,25 @@ func handleJoin(ic *IRCConn, params string) {
 	sendNamReply(ic, ircCh)
 }
 
+func handleList(ic *IRCConn, params string) {
+	var sb strings.Builder
+	chansMtx.Lock()
+	for _, ircChan := range ircChans {
+		numMembers := len(getChannelMembers(ircChan))
+		sb.WriteString(fmt.Sprintf(
+			":%s 322 %s %s %d :%s\r\n",
+			ic.Conn.LocalAddr(), ic.Nick, ircChan.Name, numMembers, ircChan.Topic))
+	}
+	sb.WriteString(fmt.Sprintf(
+		":%s 323 %s :End of LIST\r\n",
+		ic.Conn.LocalAddr(), ic.Nick))
+	chansMtx.Unlock()
+	_, err := ic.Conn.Write([]byte(sb.String()))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func checkAndSendWelcome(ic *IRCConn) {
 	if !ic.Welcomed && ic.Nick != "*" && ic.User != "" {
 		msg := fmt.Sprintf(
