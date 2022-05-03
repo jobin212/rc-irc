@@ -361,8 +361,14 @@ func handleConnection(ic *IRCConn) {
 		}
 
 		//ircCommand.handler(ic, params)
+		if !validateParameters(im.Command, strings.Join(im.Params, " "), ircCommand.minParams, ic) {
+			continue
+		}
 		ircCommand.handler(ic, im)
 	}
+	// BUG
+	// Need to remove ic from nickToConn, all channels, etc, in case of
+	// messy disconnect (i.e. no quit no part)
 	err := scanner.Err()
 	if err != nil {
 		log.Printf("ERR: %v\n", err)
@@ -424,6 +430,8 @@ func validateParameters(command, params string, expectedNumParams int, ic *IRCCo
 	} else if command == "PRIVMSG" && len(paramVals) == 1 {
 		rpl := replyMap["ERR_NOTEXTTOSEND"]
 		msg, _ = formatReply(ic, rpl, []string{})
+	} else if command == "NOTICE" && len(paramVals) != expectedNumParams {
+		return false
 	} else {
 		rpl := replyMap["ERR_NEEDMOREPARAMS"]
 		msg, _ = formatReply(ic, rpl, []string{command})
