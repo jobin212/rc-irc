@@ -143,9 +143,15 @@ type IRCChan struct {
 
 type IRCCommand struct {
 	minParams        int
-	handler          func(ic *IRCConn, params string)
+	handler          func(ic *IRCConn, im IRCMessage)
 	disableAutoReply bool
 	welcomeRequired  bool
+}
+
+type IRCMessage struct {
+	Prefix  string
+	Command string
+	Params  []string
 }
 
 func main() {
@@ -181,6 +187,45 @@ func main() {
 	<-done
 }
 
+func extractMessage(rawMsg []byte) (IRCMessage, error) {
+	var im IRCMessage
+	msgStr := string(rawMsg)
+	prefix := ""
+	if msgStr[0] == ':' {
+		// Message has a prefix
+		splitMsg := strings.SplitN(msgStr, " ", 2)
+		prefix = splitMsg[0]
+		msgStr = splitMsg[1]
+	}
+	// Split off trailing if present
+	msgParts := strings.Split(msgStr, ":")
+	trailing := ""
+	msgStr = msgParts[0]
+	if len(msgParts) == 2 {
+		// msg has `trailing` param
+		trailing = msgParts[1]
+	} else if len(msgParts) != 1 {
+		// More than one instance of ':' in command + params
+		// this should not occur and indicates a malformed message
+		return im, fmt.Errorf("in extractMessage, multiple colons found")
+	}
+	commandAndParams := strings.Split(strings.Trim(msgStr, " "), " ")
+	command := commandAndParams[0]
+	var params = make([]string, 0, 15)
+	if len(commandAndParams) != 1 {
+		params = append(params, commandAndParams[1:]...)
+	}
+	if trailing != "" {
+		params = append(params, trailing)
+	}
+	im = IRCMessage{
+		Prefix:  prefix,
+		Command: command,
+		Params:  params,
+	}
+	return im, nil
+}
+
 func handleConnection(ic *IRCConn) {
 	defer func() {
 		ic.Conn.Close()
@@ -193,6 +238,12 @@ func handleConnection(ic *IRCConn) {
 		incoming_message := scanner.Text()
 		if len(incoming_message) >= 510 {
 			incoming_message = incoming_message[:510]
+		}
+
+		im, err := extractMessage([]byte(incoming_message))
+
+		if err != nil {
+			log.Printf("Error extracting message %v", err)
 		}
 
 		incoming_message = strings.Trim(incoming_message, " ")
@@ -212,15 +263,16 @@ func handleConnection(ic *IRCConn) {
 
 		command := split_message[0]
 
-		var params string = ""
-		if len(split_message) >= 2 {
-			params = strings.Trim(split_message[1], " ")
-		}
+		//var params string = ""
+		//if len(split_message) >= 2 {
+		//	params = strings.Trim(split_message[1], " ")
+		//}
 
 		ircCommand, ok := commandMap[command]
 		if !ok {
 			log.Println("not ok")
-			handleDefault(ic, params, command)
+			//handleDefault(ic, params, command)
+			handleDefault(ic, im)
 			continue
 		}
 
@@ -228,7 +280,8 @@ func handleConnection(ic *IRCConn) {
 			continue
 		}
 
-		ircCommand.handler(ic, params)
+		//ircCommand.handler(ic, params)
+		ircCommand.handler(ic, im)
 	}
 	err := scanner.Err()
 	if err != nil {

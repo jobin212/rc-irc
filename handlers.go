@@ -8,7 +8,8 @@ import (
 	"sync"
 )
 
-func handleLUsers(ic *IRCConn, params string) {
+func handleLUsers(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("LUSERS", params, 0, ic) {
 		return
 	}
@@ -60,7 +61,8 @@ func writeLUsers(ic *IRCConn) {
 	}
 }
 
-func handleWhoIs(ic *IRCConn, params string) {
+func handleWhoIs(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	targetNick := strings.Trim(params, " ")
 
 	if targetNick == "" {
@@ -96,7 +98,8 @@ func handleWhoIs(ic *IRCConn, params string) {
 	return
 }
 
-func handleDefault(ic *IRCConn, params, command string) {
+func handleDefault(ic *IRCConn, im IRCMessage) {
+	command := im.Command
 	if command == "" || !ic.Welcomed {
 		return
 	}
@@ -117,7 +120,8 @@ func lookupNickConn(nick string) (*IRCConn, bool) {
 	return recipientIc, ok
 }
 
-func handleNotice(ic *IRCConn, params string) {
+func handleNotice(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	// TODO handle channels
 	splitParams := strings.SplitN(params, " ", 2)
 	if len(splitParams) < 2 {
@@ -142,7 +146,7 @@ func handleNotice(ic *IRCConn, params string) {
 
 }
 
-func handleMotd(ic *IRCConn, params string) {
+func handleMotd(ic *IRCConn, im IRCMessage) {
 	writeMotd(ic)
 }
 
@@ -181,7 +185,7 @@ func writeMotd(ic *IRCConn) {
 	}
 }
 
-func handlePing(ic *IRCConn, params string) {
+func handlePing(ic *IRCConn, im IRCMessage) {
 	// TODO validate welcome?
 	// TODO update ping to update connection lifetime?
 	msg := fmt.Sprintf("PONG %s\r\n", ic.Conn.LocalAddr().String())
@@ -191,11 +195,12 @@ func handlePing(ic *IRCConn, params string) {
 	}
 }
 
-func handlePong(ic *IRCConn, params string) {
+func handlePong(ic *IRCConn, im IRCMessage) {
 	return
 }
 
-func handlePrivMsg(ic *IRCConn, params string) {
+func handlePrivMsg(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("PRIVMSG", params, 2, ic) {
 		return
 	}
@@ -275,7 +280,8 @@ func handlePrivMsg(ic *IRCConn, params string) {
 	}
 }
 
-func handleQuit(ic *IRCConn, params string) {
+func handleQuit(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("QUIT", params, 0, ic) {
 		return
 	}
@@ -311,7 +317,8 @@ func handleQuit(ic *IRCConn, params string) {
 	}
 }
 
-func handleNick(ic *IRCConn, params string) {
+func handleNick(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("NICK", params, 1, ic) {
 		return
 	}
@@ -343,7 +350,8 @@ func handleNick(ic *IRCConn, params string) {
 	checkAndSendWelcome(ic)
 }
 
-func handleUser(ic *IRCConn, params string) {
+func handleUser(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("USER", params, 4, ic) {
 		return
 	}
@@ -372,7 +380,8 @@ func handleUser(ic *IRCConn, params string) {
 	checkAndSendWelcome(ic)
 }
 
-func handleTopic(ic *IRCConn, params string) {
+func handleTopic(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("TOPIC", params, 1, ic) {
 		return
 	}
@@ -449,7 +458,8 @@ func handleTopic(ic *IRCConn, params string) {
 	}
 }
 
-func handleAway(ic *IRCConn, params string) {
+func handleAway(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	awayMessage := removePrefix(strings.Trim(params, " "))
 	var msg string
 	if awayMessage == "" {
@@ -583,7 +593,8 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 	}
 }
 
-func handlePart(ic *IRCConn, params string) {
+func handlePart(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("PART", params, 1, ic) {
 		return
 	}
@@ -664,7 +675,8 @@ func handlePart(ic *IRCConn, params string) {
 	}
 }
 
-func handleJoin(ic *IRCConn, params string) {
+func handleJoin(ic *IRCConn, im IRCMessage) {
+	params := strings.Join(im.Params, " ")
 	if !validateParameters("JOIN", params, 1, ic) {
 		return
 	}
@@ -690,7 +702,7 @@ func handleJoin(ic *IRCConn, params string) {
 	sendNamReply(ic, ircCh)
 }
 
-func handleList(ic *IRCConn, params string) {
+func handleList(ic *IRCConn, im IRCMessage) {
 	var sb strings.Builder
 	chansMtx.Lock()
 	for _, ircChan := range ircChans {
