@@ -137,7 +137,7 @@ func handleNotice(ic *IRCConn, im IRCMessage) {
 	}
 
 	msg := fmt.Sprintf(
-		":%s!%s@%s NOTICE %s %s\r\n",
+		":%s!%s@%s NOTICE %s :%s\r\n",
 		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
 	_, err := recipientIc.Conn.Write([]byte(msg))
 	if err != nil {
@@ -209,6 +209,8 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 	target, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
 
 	if strings.HasPrefix(target, "#") {
+		// USER TO CHANNEL PM
+
 		// get connection from targetNick
 		channel, ok := lookupChannelByName(target)
 
@@ -246,6 +248,8 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 
 		sendMessageToChannel(ic, msg, channel, false)
 	} else {
+		// USER TO USER PM
+
 		// get connection from targetNick
 		recipientIc, ok := lookupNickConn(target)
 
@@ -259,7 +263,7 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		}
 
 		msg := fmt.Sprintf(
-			":%s!%s@%s PRIVMSG %s %s\r\n",
+			":%s!%s@%s PRIVMSG %s :%s\r\n",
 			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
 		if len(msg) > 512 {
 			msg = msg[:510] + "\r\n"

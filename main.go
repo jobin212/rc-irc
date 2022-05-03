@@ -213,7 +213,11 @@ func extractMessage(rawMsg []byte) (IRCMessage, error) {
 	command := commandAndParams[0]
 	var params = make([]string, 0, 15)
 	if len(commandAndParams) != 1 {
-		params = append(params, commandAndParams[1:]...)
+		for _, v := range commandAndParams[1:] {
+			if v != "" && v != " " {
+				params = append(params, v)
+			}
+		}
 	}
 	if trailing != "" {
 		params = append(params, trailing)
