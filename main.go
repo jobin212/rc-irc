@@ -115,6 +115,12 @@ var (
 			disableAutoReply: false,
 			welcomeRequired:  true,
 		},
+		"LIST": {
+			handler:          handleList,
+			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
+		},
 	}
 )
 
