@@ -132,12 +132,14 @@ var (
 				return fmt.Sprintf(r.FormatText, p[0])
 			},
 		},
-		"ERR_NONICKNAMEGIVEN": {
-			NumParams:    0,
-			Code:         431,
-			FormatText:   ":No nickname given",
-			UseGenerator: false,
-			Generator:    nil,
+		"ERR_CANNOTSENDTOCHAN": {
+			NumParams:    1,
+			Code:         404,
+			FormatText:   "%s :Cannot send to channel",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
 		},
 		"ERR_NORECIPIENT": {
 			NumParams:    1,
@@ -155,16 +157,32 @@ var (
 			UseGenerator: false,
 			Generator:    nil,
 		},
-		"ERR_NOTREGISTERED": {
-			NumParams:    0,
-			Code:         451,
-			FormatText:   ":You have not registered",
-			UseGenerator: false,
-		},
 		"ERR_NOMOTD": {
 			NumParams:    0,
 			Code:         422,
 			FormatText:   ":MOTD File is missing",
+			UseGenerator: false,
+		},
+		"ERR_NONICKNAMEGIVEN": {
+			NumParams:    0,
+			Code:         431,
+			FormatText:   ":No nickname given",
+			UseGenerator: false,
+			Generator:    nil,
+		},
+		"ERR_NOTONCHANNEL": {
+			NumParams:    1,
+			Code:         442,
+			FormatText:   "%s :You're not on that channel",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
+		"ERR_NOTREGISTERED": {
+			NumParams:    0,
+			Code:         451,
+			FormatText:   ":You have not registered",
 			UseGenerator: false,
 		},
 		"ERR_NEEDMOREPARAMS": {

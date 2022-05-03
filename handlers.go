@@ -216,7 +216,8 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		channel, ok := lookupChannelByName(target)
 
 		if !ok {
-			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			rpl := replyMap["ERR_NOSUCHNICK"]
+			msg, _ := formatReply(ic, rpl, []string{target})
 			_, err := ic.Conn.Write([]byte(msg))
 			if err != nil {
 				log.Println("error sending nosuchnick reply")
@@ -232,7 +233,8 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		}
 
 		if !memberOfChannel {
-			msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			msg, _ := formatReply(ic, replyMap["ERR_CANNOTSENDTOCHAN"], []string{target})
+			//msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
 			_, err := ic.Conn.Write([]byte(msg))
 			if err != nil {
 				log.Println("error sending nosuchnick reply")
@@ -255,7 +257,8 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		recipientIc, ok := lookupNickConn(target)
 
 		if !ok {
-			msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
+			rpl := replyMap["ERR_NOSUCHNICK"]
+			msg, _ := formatReply(ic, rpl, []string{target})
 			_, err := ic.Conn.Write([]byte(msg))
 			if err != nil {
 				log.Println("error sending nosuchnick reply")
@@ -618,7 +621,7 @@ func handlePart(ic *IRCConn, im IRCMessage) {
 	}
 
 	if !memberOfChannel {
-		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		msg, _ := formatReply(ic, replyMap["ERR_NOTONCHANNEL"], []string{chanName})
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
