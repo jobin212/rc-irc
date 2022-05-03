@@ -122,6 +122,46 @@ var (
 			welcomeRequired:  true,
 		},
 	}
+	replyMap = map[string]*IRCReply{
+		"ERR_NONICKNAMEGIVEN": {
+			NumParams:    0,
+			Code:         431,
+			FormatText:   ":No nickname given",
+			UseGenerator: false,
+			Generator:    nil,
+		},
+		"ERR_NORECIPIENT": {
+			NumParams:    1,
+			Code:         411,
+			FormatText:   ":No recipient given (%s)",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
+		"ERR_NOTEXTTOSEND": {
+			NumParams:    0,
+			Code:         412,
+			FormatText:   ":No text to send",
+			UseGenerator: false,
+			Generator:    nil,
+		},
+		"ERR_NOTREGISTERED": {
+			NumParams:    0,
+			Code:         451,
+			FormatText:   ":You have not registered",
+			UseGenerator: false,
+		},
+		"ERR_NEEDMOREPARAMS": {
+			NumParams:    1,
+			Code:         461,
+			FormatText:   "%s :Not enough parameters",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
+	}
 )
 
 type IRCConn struct {
@@ -146,6 +186,14 @@ type IRCCommand struct {
 	handler          func(ic *IRCConn, im IRCMessage)
 	disableAutoReply bool
 	welcomeRequired  bool
+}
+
+type IRCReply struct {
+	NumParams    int
+	Code         int
+	FormatText   string
+	UseGenerator bool
+	Generator    func(r *IRCReply, p []string) string
 }
 
 type IRCMessage struct {
@@ -267,11 +315,6 @@ func handleConnection(ic *IRCConn) {
 
 		command := split_message[0]
 
-		//var params string = ""
-		//if len(split_message) >= 2 {
-		//	params = strings.Trim(split_message[1], " ")
-		//}
-
 		ircCommand, ok := commandMap[command]
 		if !ok {
 			log.Println("not ok")
@@ -299,9 +342,8 @@ func validateWelcome(command IRCCommand, ic *IRCConn) bool {
 			return false
 		}
 
-		msg := fmt.Sprintf(
-			":%s 451 %s :You have not registered\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
+		rpl := replyMap["ERR_NOTREGISTERED"]
+		msg, _ := formatReply(ic, rpl, []string{})
 
 		log.Printf(msg)
 		_, err := ic.Conn.Write([]byte(msg))
@@ -314,6 +356,25 @@ func validateWelcome(command IRCCommand, ic *IRCConn) bool {
 	return true
 }
 
+func formatReply(ic *IRCConn, r *IRCReply, p []string) (string, error) {
+
+	if len(p) != r.NumParams {
+		return "", fmt.Errorf("in sendReply - param number mismatch - expected: %d received %d",
+			r.NumParams, len(p))
+	}
+
+	var generated string
+	if r.UseGenerator {
+		generated = r.Generator(r, p)
+	} else {
+		generated = r.FormatText
+	}
+
+	partiallyFormatted := fmt.Sprintf(":%s %d %s %s\r\n",
+		ic.Conn.LocalAddr(), r.Code, ic.Nick, generated)
+	return partiallyFormatted, nil
+}
+
 func validateParameters(command, params string, expectedNumParams int, ic *IRCConn) bool {
 	paramVals := strings.Fields(params)
 	if len(paramVals) >= expectedNumParams {
@@ -322,21 +383,17 @@ func validateParameters(command, params string, expectedNumParams int, ic *IRCCo
 
 	var msg string
 	if command == "NICK" {
-		msg = fmt.Sprintf(
-			":%s 431 %s :No nickname given\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
+		rpl := replyMap["ERR_NONICKNAMEGIVEN"]
+		msg, _ = formatReply(ic, rpl, []string{})
 	} else if command == "PRIVMSG" && len(paramVals) == 0 {
-		msg = fmt.Sprintf(
-			":%s 411 %s :No recipient given (%s)\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, command)
+		rpl := replyMap["ERR_NORECIPIENT"]
+		msg, _ = formatReply(ic, rpl, []string{command})
 	} else if command == "PRIVMSG" && len(paramVals) == 1 {
-		msg = fmt.Sprintf(
-			":%s 412 %s :No text to send\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
+		rpl := replyMap["ERR_NOTEXTTOSEND"]
+		msg, _ = formatReply(ic, rpl, []string{})
 	} else {
-		msg = fmt.Sprintf(
-			":%s 461 %s %s :Not enough parameters\r\n",
-			ic.Conn.LocalAddr(), ic.Nick, command)
+		rpl := replyMap["ERR_NEEDMOREPARAMS"]
+		msg, _ = formatReply(ic, rpl, []string{command})
 	}
 
 	log.Printf(msg)
