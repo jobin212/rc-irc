@@ -9,18 +9,8 @@ import (
 )
 
 func handleLUsers(ic *IRCConn, im IRCMessage) {
-	//params := strings.Join(im.Params, " ")
-	//if !validateParameters("LUSERS", params, 0, ic) {
-	//	return
-	//}
-
 	writeLUsers(ic)
 }
-
-//func remove(s []int, i int) []int {
-//    s[i] = s[len(s)-1]
-//    return s[:len(s)-1]
-//}
 
 func writeLUsers(ic *IRCConn) {
 	numServers, numServices, numOperators, numChannels := 1, 0, 0, 0
@@ -202,9 +192,6 @@ func handlePong(ic *IRCConn, im IRCMessage) {
 
 func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("PRIVMSG", params, 2, ic) {
-	//	return
-	//}
 
 	splitParams := strings.SplitN(params, " ", 2)
 	target, userMessage := strings.Trim(splitParams[0], " "), splitParams[1]
@@ -290,9 +277,6 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 
 func handleQuit(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("QUIT", params, 0, ic) {
-	//	return
-	//}
 
 	quitMessage := "Client Quit"
 	if params != "" {
@@ -327,9 +311,6 @@ func handleQuit(ic *IRCConn, im IRCMessage) {
 
 func handleNick(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("NICK", params, 1, ic) {
-	//	return
-	//}
 
 	prevNick := ic.Nick
 	nick := strings.SplitN(params, " ", 2)[0]
@@ -360,9 +341,6 @@ func handleNick(ic *IRCConn, im IRCMessage) {
 
 func handleUser(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("USER", params, 4, ic) {
-	//	return
-	//}
 
 	if ic.Welcomed && ic.User != "" {
 		msg := fmt.Sprintf(
@@ -390,9 +368,6 @@ func handleUser(ic *IRCConn, im IRCMessage) {
 
 func handleTopic(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("TOPIC", params, 1, ic) {
-	//	return
-	//}
 
 	splitParams := strings.SplitN(params, " ", 2)
 
@@ -597,9 +572,6 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 
 func handlePart(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("PART", params, 1, ic) {
-	//	return
-	//}
 	splitParams := strings.SplitN(params, " ", 2) // maybe split on colon?
 	chanName := splitParams[0]
 	ircCh, ok := lookupChannelByName(chanName)
@@ -679,9 +651,6 @@ func handlePart(ic *IRCConn, im IRCMessage) {
 
 func handleJoin(ic *IRCConn, im IRCMessage) {
 	params := strings.Join(im.Params, " ")
-	//if !validateParameters("JOIN", params, 1, ic) {
-	//	return
-	//}
 	chanName := params
 
 	ircCh, ok := lookupChannelByName(chanName)
