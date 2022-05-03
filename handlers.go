@@ -72,7 +72,8 @@ func handleWhoIs(ic *IRCConn, im IRCMessage) {
 	targetIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
-		msg := fmt.Sprintf(":%s 401 %s %s :No such nick/channel\r\n", ic.Conn.LocalAddr(), ic.Nick, targetNick)
+		rpl := replyMap["ERR_NOSUCHNICK"]
+		msg, _ := formatReply(ic, rpl, []string{targetNick})
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Println("error sending nosuchnick reply")
@@ -153,8 +154,8 @@ func handleMotd(ic *IRCConn, im IRCMessage) {
 func writeMotd(ic *IRCConn) {
 	dat, err := os.ReadFile("./motd.txt")
 	if err != nil {
-		msg := fmt.Sprintf(":%s 422 %s :MOTD File is missing\r\n",
-			ic.Conn.LocalAddr(), ic.Nick)
+		rpl := replyMap["ERR_NOMOTD"]
+		msg, _ := formatReply(ic, rpl, []string{})
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Fatal(err)
@@ -401,12 +402,6 @@ func handleTopic(ic *IRCConn, im IRCMessage) {
 	ircCh, ok := lookupChannelByName(chanName)
 	if !ok {
 		// ERR Channel doesn't exist
-		//msg := fmt.Sprintf(":%s 403 %s %s :No such channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
-		//_, err := ic.Conn.Write([]byte(msg))
-		//if err != nil {
-		//	log.Println("error sending nosuchnick reply")
-		//}
-		//return
 
 		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
 		_, err := ic.Conn.Write([]byte(msg))

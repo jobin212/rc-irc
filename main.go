@@ -123,6 +123,15 @@ var (
 		},
 	}
 	replyMap = map[string]*IRCReply{
+		"ERR_NOSUCHNICK": {
+			NumParams:    1,
+			Code:         401,
+			FormatText:   "%s :No such nick/channel",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
 		"ERR_NONICKNAMEGIVEN": {
 			NumParams:    0,
 			Code:         431,
@@ -150,6 +159,12 @@ var (
 			NumParams:    0,
 			Code:         451,
 			FormatText:   ":You have not registered",
+			UseGenerator: false,
+		},
+		"ERR_NOMOTD": {
+			NumParams:    0,
+			Code:         422,
+			FormatText:   ":MOTD File is missing",
 			UseGenerator: false,
 		},
 		"ERR_NEEDMOREPARAMS": {
