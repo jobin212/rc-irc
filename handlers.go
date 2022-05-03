@@ -240,7 +240,7 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		}
 
 		msg := fmt.Sprintf(
-			":%s!%s@%s PRIVMSG %s %s\r\n",
+			":%s!%s@%s PRIVMSG %s :%s\r\n",
 			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
 		if len(msg) > 512 {
 			msg = msg[:510] + "\r\n"
