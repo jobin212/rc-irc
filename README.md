@@ -6,13 +6,12 @@ How to connect
 telnet localhost 8080
 ```
 
-Run test locally:
+Run tests
+- [Setup chirc](http://chi.cs.uchicago.edu/chirc/installing.html#software-requirements)
+- [Setup chirc testing](http://chi.cs.uchicago.edu/chirc/testing.html#using-the-automated-tests)
 ```shell
- go build && mv rc-irc chirc && rm ~/chirc/build/chirc && cp ./chirc ~/chirc/build/ && cd ~/chirc/build && python3 -m pytest  ../tests/ -k test_connect_simple1 & cd ~/rc-irc
-
- go build && mv rc-irc chirc && rm ~/chirc/build/chirc && cp ./chirc ~/chirc/build/ && cd ~/chirc/build && python3 -m pytest  ../tests/ --chirc-category CONNECTION_REGISTRATION & cd ~/rc-irc
-
- go build && mv rc-irc chirc && rm ~/chirc/build/chirc && cp ./chirc ~/chirc/build/ && cd ~/chirc/build && python3 -m pytest  ../tests/ --chirc-category CHANNEL_PRIVMSG_NOTICE & cd ~/rc-irc
-
- go build && mv rc-irc chirc && rm ~/chirc/build/chirc && cp ./chirc ~/chirc/build/ && cd ~/chirc/build && make assignment-2 & cd ~/rc-irc
+💬 go build && mv rc-irc ~/rc-irc/chirc/build/chirc
+💬 cd ./chirc/build/
+💬 make assignment-3
+💬 python3 -m pytest ../tests/ --chirc-category PRIVMSG_NOTICE
  ```
