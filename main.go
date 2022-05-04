@@ -243,7 +243,7 @@ type IRCChan struct {
 
 type IRCCommand struct {
 	minParams        int
-	handler          func(ic *IRCConn, im IRCMessage)
+	handler          func(ic *IRCConn, im IRCMessage) error
 	disableAutoReply bool
 	welcomeRequired  bool
 }
@@ -260,6 +260,21 @@ type IRCMessage struct {
 	Prefix  string
 	Command string
 	Params  []string
+}
+
+func sendMessage(ic *IRCConn, msg string) error {
+	if ic == nil {
+		return fmt.Errorf("sendMessage - ic is nil")
+	}
+	msgLen := len(msg)
+	wrLen, err := ic.Conn.Write([]byte(msg))
+	if wrLen != msgLen {
+		return fmt.Errorf("sendMessage - unable to write complete message")
+	}
+	if err != nil {
+		return fmt.Errorf("sendMessage - %w", err)
+	}
+	return nil
 }
 
 func main() {

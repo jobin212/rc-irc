@@ -8,11 +8,12 @@ import (
 	"sync"
 )
 
-func handleLUsers(ic *IRCConn, im IRCMessage) {
+func handleLUsers(ic *IRCConn, im IRCMessage) error {
 	writeLUsers(ic)
+	return nil
 }
 
-func writeLUsers(ic *IRCConn) {
+func writeLUsers(ic *IRCConn) error {
 	numServers, numServices, numOperators, numChannels := 1, 0, 0, 0
 	numUsers, numUnknownConnections, numClients := 0, 0, 0
 
@@ -45,18 +46,19 @@ func writeLUsers(ic *IRCConn) {
 	sb.WriteString(fmt.Sprintf(":%s 255 %s :I have %d clients and %d servers\r\n",
 		ic.Conn.LocalAddr(), ic.Nick, numClients, numServers))
 
-	_, err := ic.Conn.Write([]byte(sb.String()))
+	err := sendMessage(ic, sb.String())
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("writeLusers - %w", err)
 	}
+	return nil
 }
 
-func handleWhoIs(ic *IRCConn, im IRCMessage) {
+func handleWhoIs(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 	targetNick := strings.Trim(params, " ")
 
 	if targetNick == "" {
-		return
+		return nil
 	}
 
 	targetIc, ok := lookupNickConn(targetNick)
@@ -64,11 +66,11 @@ func handleWhoIs(ic *IRCConn, im IRCMessage) {
 	if !ok {
 		rpl := replyMap["ERR_NOSUCHNICK"]
 		msg, _ := formatReply(ic, rpl, []string{targetNick})
-		_, err := ic.Conn.Write([]byte(msg))
+		err := sendMessage(ic, msg)
 		if err != nil {
-			log.Println("error sending nosuchnick reply")
+			return fmt.Errorf("whoIs - sending NOSUCHNICK - %w", err)
 		}
-		return
+		return nil
 	}
 
 	var sb strings.Builder
@@ -81,25 +83,27 @@ func handleWhoIs(ic *IRCConn, im IRCMessage) {
 	sb.WriteString(fmt.Sprintf(":%s 318 %s %s :End of WHOIS list\r\n",
 		ic.Conn.LocalAddr(), ic.Nick, targetIc.Nick))
 
-	_, err := ic.Conn.Write([]byte(sb.String()))
+	err := sendMessage(ic, sb.String())
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("whoIs - %w", err)
 	}
 
-	return
+	return nil
 }
 
-func handleDefault(ic *IRCConn, im IRCMessage) {
+func handleDefault(ic *IRCConn, im IRCMessage) error {
 	command := im.Command
 	if command == "" || !ic.Welcomed {
-		return
+		return nil
 	}
 
-	msg, _ := formatReply(ic, replyMap["ERR_UNKNOWNCOMMAND"], []string{command})
-	_, err := ic.Conn.Write([]byte(msg))
+	rplName := "ERR_UNKNOWNCOMMAND"
+	msg, _ := formatReply(ic, replyMap[rplName], []string{command})
+	err := sendMessage(ic, msg)
 	if err != nil {
-		log.Println("error sending nosuchnick reply")
+		return fmt.Errorf("handleDefault - sending %s %w", rplName, err)
 	}
+	return nil
 }
 
 // Helper function to deal with the fact that nickToConn should be threadsafe
@@ -110,12 +114,12 @@ func lookupNickConn(nick string) (*IRCConn, bool) {
 	return recipientIc, ok
 }
 
-func handleNotice(ic *IRCConn, im IRCMessage) {
+func handleNotice(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 	// TODO handle channels
 	splitParams := strings.SplitN(params, " ", 2)
 	if len(splitParams) < 2 {
-		return
+		return nil
 	}
 	targetNick, userMessage := splitParams[0], splitParams[1]
 
@@ -123,33 +127,35 @@ func handleNotice(ic *IRCConn, im IRCMessage) {
 	recipientIc, ok := lookupNickConn(targetNick)
 
 	if !ok {
-		return
+		// TODO this should probably log something
+		return nil
 	}
 
 	msg := fmt.Sprintf(
 		":%s!%s@%s NOTICE %s :%s\r\n",
 		ic.Nick, ic.User, ic.Conn.RemoteAddr(), targetNick, userMessage)
-	_, err := recipientIc.Conn.Write([]byte(msg))
+	err := sendMessage(recipientIc, msg)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("handleNotice - %w", err)
 	}
-
+	return nil
 }
 
-func handleMotd(ic *IRCConn, im IRCMessage) {
-	writeMotd(ic)
+func handleMotd(ic *IRCConn, im IRCMessage) error {
+	return writeMotd(ic)
 }
 
-func writeMotd(ic *IRCConn) {
+func writeMotd(ic *IRCConn) error {
 	dat, err := os.ReadFile("./motd.txt")
 	if err != nil {
-		rpl := replyMap["ERR_NOMOTD"]
+		rplName := "ERR_NOMOTD"
+		rpl := replyMap[rplName]
 		msg, _ := formatReply(ic, rpl, []string{})
-		_, err := ic.Conn.Write([]byte(msg))
+		err := sendMessage(ic, msg)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("writeMotd - sending %s %w", rplName, err)
 		}
-		return
+		return nil
 	}
 	motd := string(dat)
 
@@ -169,27 +175,29 @@ func writeMotd(ic *IRCConn) {
 	sb.WriteString(fmt.Sprintf(":%s 376 %s :End of MOTD command\r\n",
 		ic.Conn.LocalAddr(), ic.Nick))
 
-	_, err = ic.Conn.Write([]byte(sb.String()))
+	err = sendMessage(ic, sb.String())
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("writeMotd - sending MOTD %w", err)
 	}
+	return nil
 }
 
-func handlePing(ic *IRCConn, im IRCMessage) {
+func handlePing(ic *IRCConn, im IRCMessage) error {
 	// TODO validate welcome?
 	// TODO update ping to update connection lifetime?
 	msg := fmt.Sprintf("PONG %s\r\n", ic.Conn.LocalAddr().String())
-	_, err := ic.Conn.Write([]byte(msg))
+	err := sendMessage(ic, msg)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("handlePing - %w", err)
 	}
+	return nil
 }
 
-func handlePong(ic *IRCConn, im IRCMessage) {
-	return
+func handlePong(ic *IRCConn, im IRCMessage) error {
+	return nil
 }
 
-func handlePrivMsg(ic *IRCConn, im IRCMessage) {
+func handlePrivMsg(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 
 	splitParams := strings.SplitN(params, " ", 2)
@@ -202,13 +210,14 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		channel, ok := lookupChannelByName(target)
 
 		if !ok {
-			rpl := replyMap["ERR_NOSUCHNICK"]
+			rplName := "ERR_NOSUCHNICK"
+			rpl := replyMap[rplName]
 			msg, _ := formatReply(ic, rpl, []string{target})
-			_, err := ic.Conn.Write([]byte(msg))
+			err := sendMessage(ic, msg)
 			if err != nil {
-				log.Println("error sending nosuchnick reply")
+				return fmt.Errorf("handlePrivMsg - writing %s - %w", rplName, err)
 			}
-			return
+			return nil
 		}
 
 		memberOfChannel := false
@@ -219,12 +228,13 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		}
 
 		if !memberOfChannel {
-			msg, _ := formatReply(ic, replyMap["ERR_CANNOTSENDTOCHAN"], []string{target})
-			_, err := ic.Conn.Write([]byte(msg))
+			rplName := "ERR_CANNOTSENDTOCHAN"
+			msg, _ := formatReply(ic, replyMap[rplName], []string{target})
+			err := sendMessage(ic, msg)
 			if err != nil {
-				log.Println("error sending nosuchnick reply")
+				return fmt.Errorf("handlePrivMsg - writing %s - %w", rplName, err)
 			}
-			return
+			return nil
 		}
 
 		msg := fmt.Sprintf(
@@ -242,13 +252,14 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		recipientIc, ok := lookupNickConn(target)
 
 		if !ok {
-			rpl := replyMap["ERR_NOSUCHNICK"]
+			rplName := "ERR_NOSUCHNICK"
+			rpl := replyMap[rplName]
 			msg, _ := formatReply(ic, rpl, []string{target})
-			_, err := ic.Conn.Write([]byte(msg))
+			err := sendMessage(ic, msg)
 			if err != nil {
-				log.Println("error sending nosuchnick reply")
+				return fmt.Errorf("handlePrivMsg - writing %s - %w", rplName, err)
 			}
-			return
+			return nil
 		}
 
 		msg := fmt.Sprintf(
@@ -265,15 +276,16 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 		if recipientIc.AwayMessage != "" {
 			awayAutoReply := fmt.Sprintf(":%s!%s@%s 301 %s %s :%s\r\n",
 				recipientIc.Nick, recipientIc.User, recipientIc.Conn.RemoteAddr(), ic.Nick, recipientIc.Nick, recipientIc.AwayMessage)
-			_, err := ic.Conn.Write([]byte(awayAutoReply))
+			err := sendMessage(ic, awayAutoReply)
 			if err != nil {
-				log.Fatal(err)
+				return fmt.Errorf("handlePrivMsg - writing awayAutoReply - %w", err)
 			}
 		}
 	}
+	return nil
 }
 
-func handleQuit(ic *IRCConn, im IRCMessage) {
+func handleQuit(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 
 	quitMessage := "Client Quit"
@@ -282,9 +294,9 @@ func handleQuit(ic *IRCConn, im IRCMessage) {
 	}
 
 	msg := fmt.Sprintf("ERROR :Closing Link: %s (%s)\r\n", ic.Conn.RemoteAddr(), quitMessage)
-	_, err := ic.Conn.Write([]byte(msg))
+	err := sendMessage(ic, msg)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("handleQuit - sending closing link - %w", err)
 	}
 
 	nickToConnMtx.Lock()
@@ -303,11 +315,13 @@ func handleQuit(ic *IRCConn, im IRCMessage) {
 	// TODO close gracefully, cleaup
 	err = ic.Conn.Close()
 	if err != nil {
-		log.Println(err)
+		return fmt.Errorf("handleQuit - Closing connection - %w", err)
 	}
+	return nil
 }
 
-func handleNick(ic *IRCConn, im IRCMessage) {
+// CONTINUE FROM HERE
+func handleNick(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 
 	prevNick := ic.Nick
@@ -320,7 +334,7 @@ func handleNick(ic *IRCConn, im IRCMessage) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		return
+		return nil
 	}
 
 	// if Nick has already been set
@@ -334,9 +348,10 @@ func handleNick(ic *IRCConn, im IRCMessage) {
 	ic.Nick = nick
 
 	checkAndSendWelcome(ic)
+	return nil
 }
 
-func handleUser(ic *IRCConn, im IRCMessage) {
+func handleUser(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 
 	if ic.Welcomed && ic.User != "" {
@@ -348,7 +363,7 @@ func handleUser(ic *IRCConn, im IRCMessage) {
 			log.Fatal(err)
 		}
 
-		return
+		return nil
 	}
 
 	splitParams := strings.SplitN(params, " ", 2)
@@ -361,9 +376,10 @@ func handleUser(ic *IRCConn, im IRCMessage) {
 	}
 
 	checkAndSendWelcome(ic)
+	return nil
 }
 
-func handleTopic(ic *IRCConn, im IRCMessage) {
+func handleTopic(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 
 	splitParams := strings.SplitN(params, " ", 2)
@@ -383,7 +399,7 @@ func handleTopic(ic *IRCConn, im IRCMessage) {
 		if err != nil {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
 		}
-		return
+		return nil
 	}
 
 	memberOfChannel := false
@@ -399,7 +415,7 @@ func handleTopic(ic *IRCConn, im IRCMessage) {
 		if err != nil {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
 		}
-		return
+		return nil
 	}
 
 	ircCh.Mtx.Lock()
@@ -430,9 +446,10 @@ func handleTopic(ic *IRCConn, im IRCMessage) {
 			log.Println("error sending TOPIC reply")
 		}
 	}
+	return nil
 }
 
-func handleAway(ic *IRCConn, im IRCMessage) {
+func handleAway(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 	awayMessage := removePrefix(strings.Trim(params, " "))
 	var msg string
@@ -448,6 +465,7 @@ func handleAway(ic *IRCConn, im IRCMessage) {
 	if err != nil {
 		log.Println("error sending AWAY reply")
 	}
+	return nil
 }
 
 func lookupChannelByName(name string) (*IRCChan, bool) {
@@ -567,7 +585,7 @@ func sendNamReply(ic *IRCConn, ircCh *IRCChan) {
 	}
 }
 
-func handlePart(ic *IRCConn, im IRCMessage) {
+func handlePart(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 	splitParams := strings.SplitN(params, " ", 2) // maybe split on colon?
 	chanName := splitParams[0]
@@ -579,7 +597,7 @@ func handlePart(ic *IRCConn, im IRCMessage) {
 		if err != nil {
 			log.Println("error sending nosuchnick reply")
 		}
-		return
+		return nil
 	}
 
 	memberOfChannel := false
@@ -595,7 +613,7 @@ func handlePart(ic *IRCConn, im IRCMessage) {
 		if err != nil {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
 		}
-		return
+		return nil
 	}
 
 	msg := ""
@@ -644,9 +662,10 @@ func handlePart(ic *IRCConn, im IRCMessage) {
 		chansMtx.Unlock()
 		nameToChanMtx.Unlock()
 	}
+	return nil
 }
 
-func handleJoin(ic *IRCConn, im IRCMessage) {
+func handleJoin(ic *IRCConn, im IRCMessage) error {
 	params := strings.Join(im.Params, " ")
 	chanName := params
 
@@ -659,7 +678,7 @@ func handleJoin(ic *IRCConn, im IRCMessage) {
 	members := getChannelMembers(ircCh)
 	for _, v := range members {
 		if v == ic {
-			return
+			return nil
 		}
 	}
 	// Join channel
@@ -668,9 +687,10 @@ func handleJoin(ic *IRCConn, im IRCMessage) {
 	sendTopicReply(ic, ircCh)
 	// RPL_NAMREPLY & RPL_ENDOFNAMES
 	sendNamReply(ic, ircCh)
+	return nil
 }
 
-func handleList(ic *IRCConn, im IRCMessage) {
+func handleList(ic *IRCConn, im IRCMessage) error {
 	var sb strings.Builder
 	chansMtx.Lock()
 	for _, ircChan := range ircChans {
@@ -687,6 +707,7 @@ func handleList(ic *IRCConn, im IRCMessage) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	return nil
 }
 
 func checkAndSendWelcome(ic *IRCConn) {
