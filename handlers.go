@@ -8,6 +8,48 @@ import (
 	"sync"
 )
 
+func handleMode(ic *IRCConn, im IRCMessage) error {
+	// target can be nick or channel
+	target := im.Params[0]
+	if strings.HasPrefix(target, "#") {
+		// dealing with channel
+		//chanName := target
+		//ircCh, ok := lookupChannelByName(chanName)
+		//if !ok {
+		//	// channel doesn't exist
+		//}
+		//mode := im.Params[1]
+		//nick := im.Params[2]
+	} else {
+		// dealing with user nick
+		nick := target
+		if nick != ic.Nick {
+			// Send some error
+		}
+		mode := im.Params[1]
+		if strings.HasPrefix(mode, "+") {
+			switch mode[1] {
+			case 'o':
+				ic.isOperator = true
+			case 'a':
+				ic.isAway = true
+			default:
+				return fmt.Errorf("mode - unknown mode")
+			}
+		} else if strings.HasPrefix(mode, "-") {
+			switch mode[1] {
+			case 'o':
+				ic.isOperator = false
+			case 'a':
+				ic.isAway = false
+			default:
+				return fmt.Errorf("mode - unknown mode")
+			}
+		}
+	}
+	return nil
+}
+
 func handleLUsers(ic *IRCConn, im IRCMessage) error {
 	writeLUsers(ic)
 	return nil
@@ -299,20 +341,22 @@ func handleQuit(ic *IRCConn, im IRCMessage) error {
 		return fmt.Errorf("handleQuit - sending closing link - %w", err)
 	}
 
-	nickToConnMtx.Lock()
-	delete(nickToConn, ic.Nick)
-	nickToConnMtx.Unlock()
+	cleanupIC(ic)
 
-	connsMtx.Lock()
-	for idx, conn := range ircConns {
-		if conn == ic {
-			ircConns = append(ircConns[:idx], ircConns[idx+1:]...)
-			break
-		}
-	}
-	connsMtx.Unlock()
+	//nickToConnMtx.Lock()
+	//delete(nickToConn, ic.Nick)
+	//nickToConnMtx.Unlock()
 
-	// TODO close gracefully, cleaup
+	//connsMtx.Lock()
+	//for idx, conn := range ircConns {
+	//	if conn == ic {
+	//		ircConns = append(ircConns[:idx], ircConns[idx+1:]...)
+	//		break
+	//	}
+	//}
+	//connsMtx.Unlock()
+
+	ic.isDeleted = true
 	err = ic.Conn.Close()
 	if err != nil {
 		return fmt.Errorf("handleQuit - Closing connection - %w", err)

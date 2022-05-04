@@ -19,7 +19,7 @@ const (
 // TODO - handle improperly closed connections cleanly
 
 var (
-	port             = flag.String("p", "8080", "http service address")
+	port             = flag.String("p", "8082", "http service address")
 	operatorPassword = flag.String("o", "pw", "operator password")
 	nickToConn       = map[string]*IRCConn{}
 	nameToChan       = map[string]*IRCChan{}
@@ -118,6 +118,12 @@ var (
 		"LIST": {
 			handler:          handleList,
 			minParams:        0,
+			disableAutoReply: false,
+			welcomeRequired:  true,
+		},
+		"MODE": {
+			handler:          handleMode,
+			minParams:        2,
 			disableAutoReply: false,
 			welcomeRequired:  true,
 		},
@@ -231,14 +237,20 @@ type IRCConn struct {
 	RealName    string
 	Welcomed    bool
 	AwayMessage string
+	isAway      bool
+	isOperator  bool
+	isDeleted   bool
 }
 
 type IRCChan struct {
-	Mtx     sync.Mutex
-	Name    string
-	Topic   string
-	OpNicks map[string]bool
-	Members []*IRCConn
+	Mtx               sync.Mutex
+	Name              string
+	Topic             string
+	OpNicks           map[string]bool
+	canTalk           map[string]bool
+	Members           []*IRCConn
+	isModerated       bool
+	isTopicRestricted bool
 }
 
 type IRCCommand struct {
@@ -353,9 +365,33 @@ func extractMessage(rawMsg []byte) (IRCMessage, error) {
 	return im, nil
 }
 
+func cleanupIC(ic *IRCConn) error {
+
+	nickToConnMtx.Lock()
+	delete(nickToConn, ic.Nick)
+	nickToConnMtx.Unlock()
+
+	connsMtx.Lock()
+	for idx, conn := range ircConns {
+		if conn == ic {
+			ircConns = append(ircConns[:idx], ircConns[idx+1:]...)
+			break
+		}
+	}
+	connsMtx.Unlock()
+	ic.isDeleted = true
+	return nil
+
+}
+
 func handleConnection(ic *IRCConn) {
 	defer func() {
 		ic.Conn.Close()
+
+		// TODO Refactor into cleanup function
+		if !ic.isDeleted {
+			cleanupIC(ic)
+		}
 	}()
 
 	scanner := bufio.NewScanner(ic.Conn)
