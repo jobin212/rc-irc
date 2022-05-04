@@ -95,8 +95,7 @@ func handleDefault(ic *IRCConn, im IRCMessage) {
 		return
 	}
 
-	msg := fmt.Sprintf(":%s 421 %s %s :Unknown command\r\n",
-		ic.Conn.LocalAddr(), ic.Nick, command)
+	msg, _ := formatReply(ic, replyMap["ERR_UNKNOWNCOMMAND"], []string{command})
 	_, err := ic.Conn.Write([]byte(msg))
 	if err != nil {
 		log.Println("error sending nosuchnick reply")
@@ -221,7 +220,6 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) {
 
 		if !memberOfChannel {
 			msg, _ := formatReply(ic, replyMap["ERR_CANNOTSENDTOCHAN"], []string{target})
-			//msg := fmt.Sprintf(":%s 404 %s %s :Cannot send to channel\r\n", ic.Conn.LocalAddr(), ic.Nick, target)
 			_, err := ic.Conn.Write([]byte(msg))
 			if err != nil {
 				log.Println("error sending nosuchnick reply")
@@ -317,8 +315,7 @@ func handleNick(ic *IRCConn, im IRCMessage) {
 
 	_, nickInUse := lookupNickConn(nick)
 	if nick != ic.Nick && nickInUse { // TODO what happens if they try to change their own nick?
-		msg := fmt.Sprintf(":%s 433 * %s :Nickname is already in use\r\n",
-			ic.Conn.LocalAddr(), nick)
+		msg, _ := formatReply(ic, replyMap["ERR_NICKNAMEINUSE"], []string{nick})
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Fatal(err)
@@ -381,7 +378,7 @@ func handleTopic(ic *IRCConn, im IRCMessage) {
 	if !ok {
 		// ERR Channel doesn't exist
 
-		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		msg, _ := formatReply(ic, replyMap["ERR_NOTONCHANNEL"], []string{chanName}) // This is required by tests
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
@@ -397,7 +394,7 @@ func handleTopic(ic *IRCConn, im IRCMessage) {
 	}
 
 	if !memberOfChannel {
-		msg := fmt.Sprintf(":%s 442 %s %s :You're not on that channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		msg, _ := formatReply(ic, replyMap["ERR_NOTONCHANNEL"], []string{chanName})
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
@@ -577,7 +574,7 @@ func handlePart(ic *IRCConn, im IRCMessage) {
 	ircCh, ok := lookupChannelByName(chanName)
 	if !ok {
 		// ERR Channel doesn't exist
-		msg := fmt.Sprintf(":%s 403 %s %s :No such channel\r\n", ic.Conn.LocalAddr(), ic.Nick, chanName)
+		msg, _ := formatReply(ic, replyMap["ERR_NOSUCHCHANNEL"], []string{chanName})
 		_, err := ic.Conn.Write([]byte(msg))
 		if err != nil {
 			log.Println("error sending nosuchnick reply")

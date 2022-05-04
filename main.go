@@ -132,6 +132,15 @@ var (
 				return fmt.Sprintf(r.FormatText, p[0])
 			},
 		},
+		"ERR_NOSUCHCHANNEL": {
+			NumParams:    1,
+			Code:         403,
+			FormatText:   "%s :No such channel",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
 		"ERR_CANNOTSENDTOCHAN": {
 			NumParams:    1,
 			Code:         404,
@@ -157,6 +166,15 @@ var (
 			UseGenerator: false,
 			Generator:    nil,
 		},
+		"ERR_UNKNOWNCOMMAND": {
+			NumParams:    1,
+			Code:         421,
+			FormatText:   "%s :Unknown command",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
 		"ERR_NOMOTD": {
 			NumParams:    0,
 			Code:         422,
@@ -169,6 +187,15 @@ var (
 			FormatText:   ":No nickname given",
 			UseGenerator: false,
 			Generator:    nil,
+		},
+		"ERR_NICKNAMEINUSE": {
+			NumParams:    1,
+			Code:         433,
+			FormatText:   "%s :Nickname is already in use",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
 		},
 		"ERR_NOTONCHANNEL": {
 			NumParams:    1,
