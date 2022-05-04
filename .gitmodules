@@ -1,0 +1,3 @@
+[submodule "chirc"]
+	path = chirc
+	url = https://github.com/uchicago-cs/chirc
