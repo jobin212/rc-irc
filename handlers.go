@@ -8,43 +8,129 @@ import (
 	"sync"
 )
 
+func setMemberStatusMode(nick, mode string, ircCh *IRCChan) (int, error) {
+	if ircCh == nil {
+		return -1, fmt.Errorf("setMemberStatusMode - ircCh is nil")
+	}
+	ircCh.Mtx.Lock()
+	defer ircCh.Mtx.Unlock()
+	modeChange := mode[0]
+	modeType := mode[1]
+	v := false
+
+	switch modeChange {
+	case '+':
+		v = true
+	case '-':
+		v = false
+	default:
+		return 2, fmt.Errorf("setMemberStatusMode - unknown modechange - %s", mode)
+	}
+
+	switch modeType {
+	case 'v':
+		ircCh.CanTalk[nick] = v
+	case 'o':
+		ircCh.OpNicks[nick] = v
+	default:
+		return 2, fmt.Errorf("setMemberStatusMode - unknown modetype - %s", mode)
+	}
+
+	return 0, nil
+}
+
+func userIsChannelOp(ic *IRCConn, ircCh *IRCChan) bool {
+	ircCh.Mtx.Lock()
+	defer ircCh.Mtx.Unlock()
+	isOp, ok := ircCh.OpNicks[ic.Nick]
+	return isOp && ok
+}
+
 func handleMode(ic *IRCConn, im IRCMessage) error {
 	// target can be nick or channel
 	target := im.Params[0]
 	if strings.HasPrefix(target, "#") {
 		// dealing with channel
-		//chanName := target
-		//ircCh, ok := lookupChannelByName(chanName)
-		//if !ok {
-		//	// channel doesn't exist
-		//}
-		//mode := im.Params[1]
-		//nick := im.Params[2]
+		chanName := target
+		ircCh, ok := lookupChannelByName(chanName)
+		if !ok {
+			msg, _ := formatReply(ic, replyMap["ERR_NOSUCHCHANNEL"], []string{chanName})
+			return sendMessage(ic, msg)
+			// channel doesn't exist
+		}
+		switch len(im.Params) {
+		case 2:
+			//mode := im.Params[1]
+		case 3:
+			mode := im.Params[1]
+			nick := im.Params[2]
+			// TODO check that sender can set modes
+			if !userIsChannelOp(ic, ircCh) {
+				msg, _ := formatReply(ic, replyMap["ERR_CHANOPRIVSNEEDED"], []string{chanName})
+				return sendMessage(ic, msg)
+			}
+			// check if user is in channel
+			ircCh.Mtx.Lock()
+			nickIsChannelMember := false
+			for _, v := range ircCh.Members {
+				if v.Nick == nick {
+					nickIsChannelMember = true
+					break
+				}
+			}
+			ircCh.Mtx.Unlock()
+			if !nickIsChannelMember {
+				msg, _ := formatReply(ic, replyMap["ERR_USERNOTINCHANNEL"], []string{nick, chanName})
+				return sendMessage(ic, msg)
+			}
+
+			// set Mode
+			rv, err := setMemberStatusMode(nick, mode, ircCh)
+			if err != nil {
+				switch rv {
+				case 2:
+					modeChar := string(mode[1])
+					msg, _ := formatReply(ic, replyMap["ERR_UNKNOWNMODE"], []string{modeChar, chanName})
+					return sendMessage(ic, msg)
+				}
+			}
+
+		default: // invalid num params
+		}
 	} else {
 		// dealing with user nick
 		nick := target
 		if nick != ic.Nick {
+			msg, _ := formatReply(ic, replyMap["ERR_USERSDONTMATCH"], []string{})
+			return sendMessage(ic, msg)
 			// Send some error
 		}
 		mode := im.Params[1]
-		if strings.HasPrefix(mode, "+") {
-			switch mode[1] {
-			case 'o':
-				ic.isOperator = true
-			case 'a':
-				ic.isAway = true
-			default:
-				return fmt.Errorf("mode - unknown mode")
-			}
-		} else if strings.HasPrefix(mode, "-") {
-			switch mode[1] {
-			case 'o':
-				ic.isOperator = false
-			case 'a':
-				ic.isAway = false
-			default:
-				return fmt.Errorf("mode - unknown mode")
-			}
+		if len(mode) != 2 {
+			rpl, _ := replyMap["ERR_UMODEUNKNOWNFLAG"]
+			msg, _ := formatReply(ic, rpl, []string{})
+			return sendMessage(ic, msg)
+		}
+		modeChange := mode[0]
+		modeType := mode[1]
+		modeValue := false
+		switch modeChange {
+		case '+':
+			modeValue = true
+		case '-':
+			modeValue = false
+		default:
+			rpl, _ := replyMap["ERR_UMODEUNKNOWNFLAG"]
+			msg, _ := formatReply(ic, rpl, []string{})
+			return sendMessage(ic, msg)
+		}
+		switch modeType {
+		case 'o':
+			ic.isOperator = modeValue
+		default:
+			rpl, _ := replyMap["ERR_UMODEUNKNOWNFLAG"]
+			msg, _ := formatReply(ic, rpl, []string{})
+			return sendMessage(ic, msg)
 		}
 	}
 	return nil

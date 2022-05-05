@@ -19,7 +19,7 @@ const (
 // TODO - handle improperly closed connections cleanly
 
 var (
-	port             = flag.String("p", "8082", "http service address")
+	port             = flag.String("p", "8080", "http service address")
 	operatorPassword = flag.String("o", "pw", "operator password")
 	nickToConn       = map[string]*IRCConn{}
 	nameToChan       = map[string]*IRCChan{}
@@ -203,6 +203,15 @@ var (
 				return fmt.Sprintf(r.FormatText, p[0])
 			},
 		},
+		"ERR_USERNOTINCHANNEL": {
+			NumParams:    2,
+			Code:         441,
+			FormatText:   "%s %s :They aren't on that channel",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0], p[1])
+			},
+		},
 		"ERR_NOTONCHANNEL": {
 			NumParams:    1,
 			Code:         442,
@@ -227,6 +236,36 @@ var (
 				return fmt.Sprintf(r.FormatText, p[0])
 			},
 		},
+		"ERR_UNKNOWNMODE": {
+			NumParams:    2,
+			Code:         472,
+			FormatText:   "%s :is unknown mode char to me for %s",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0], p[1])
+			},
+		},
+		"ERR_CHANOPRIVSNEEDED": {
+			NumParams:    1,
+			Code:         482,
+			FormatText:   "%s :You're not channel operator",
+			UseGenerator: true,
+			Generator: func(r *IRCReply, p []string) string {
+				return fmt.Sprintf(r.FormatText, p[0])
+			},
+		},
+		"ERR_UMODEUNKNOWNFLAG": {
+			NumParams:    0,
+			Code:         501,
+			FormatText:   ":Unknown MODE Flag",
+			UseGenerator: false,
+		},
+		"ERR_USERSDONTMATCH": {
+			NumParams:    0,
+			Code:         502,
+			FormatText:   "Cannot change mode for other users",
+			UseGenerator: false,
+		},
 	}
 )
 
@@ -247,7 +286,7 @@ type IRCChan struct {
 	Name              string
 	Topic             string
 	OpNicks           map[string]bool
-	canTalk           map[string]bool
+	CanTalk           map[string]bool
 	Members           []*IRCConn
 	isModerated       bool
 	isTopicRestricted bool
