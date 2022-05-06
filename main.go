@@ -123,7 +123,7 @@ var (
 		},
 		"MODE": {
 			handler:          handleMode,
-			minParams:        2,
+			minParams:        1,
 			disableAutoReply: false,
 			welcomeRequired:  true,
 		},

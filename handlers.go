@@ -46,6 +46,51 @@ func userIsChannelOp(ic *IRCConn, ircCh *IRCChan) bool {
 	return isOp && ok
 }
 
+func setChannelMode(ircCh *IRCChan, mode string) error {
+	if len(mode) != 2 {
+		return fmt.Errorf("setChannelMode - invalid mode")
+	}
+	modeChange := mode[0]
+	modeType := mode[1]
+	modeValue := false
+
+	switch modeChange {
+	case '+':
+		modeValue = true
+	case '-':
+		modeValue = false
+	default:
+		return fmt.Errorf("setChannelMode - invalid mode")
+	}
+
+	ircCh.Mtx.Lock()
+
+	switch modeType {
+	case 'm':
+		ircCh.isModerated = modeValue
+	case 't':
+		ircCh.isTopicRestricted = modeValue
+	default:
+		return fmt.Errorf("setChannelMode - invalid mode")
+	}
+	defer ircCh.Mtx.Unlock()
+
+	return nil
+}
+
+func getChannelMode(ircCh *IRCChan) (string, error) {
+	ircCh.Mtx.Lock()
+	channelMode := ""
+	if ircCh.isModerated {
+		channelMode += "m"
+	}
+	if ircCh.isTopicRestricted {
+		channelMode += "t"
+	}
+	defer ircCh.Mtx.Unlock()
+	return channelMode, nil
+}
+
 func handleMode(ic *IRCConn, im IRCMessage) error {
 	// target can be nick or channel
 	target := im.Params[0]
@@ -59,9 +104,31 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 			// channel doesn't exist
 		}
 		switch len(im.Params) {
+		case 1:
+			// Requesting channel mode
+			channelMode, _ := getChannelMode(ircCh)
+			msg := fmt.Sprintf(":%s!%s@%s 324 %s %s +%s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), ic.Nick, chanName, channelMode)
+			return sendMessage(ic, msg)
 		case 2:
-			//mode := im.Params[1]
+			// Modifying channel mode
+			mode := im.Params[1]
+			if userIsChannelOp(ic, ircCh) {
+				err := setChannelMode(ircCh, mode)
+				msg := ""
+				if err != nil {
+					modeChar := string(mode[1])
+					msg, _ = formatReply(ic, replyMap["ERR_UNKNOWNMODE"], []string{modeChar, chanName})
+				} else {
+					msg = fmt.Sprintf(":%s!%s@%s MODE %s %s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), chanName, mode)
+				}
+				return sendMessage(ic, msg)
+
+			} else {
+				msg, _ := formatReply(ic, replyMap["ERR_CHANOPRIVNEEDED"], []string{ic.Nick})
+				return sendMessage(ic, msg)
+			}
 		case 3:
+			// Modifying channelMemberStatus
 			mode := im.Params[1]
 			nick := im.Params[2]
 			// TODO check that sender can set modes
@@ -115,12 +182,12 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 		}
 		modeChange := mode[0]
 		modeType := mode[1]
-		//modeValue := false
+		modeValue := false
 		switch modeChange {
 		case '+':
-			//modeValue = true
+			modeValue = true
 		case '-':
-			//modeValue = false
+			modeValue = false
 		default:
 			rpl, _ := replyMap["ERR_UMODEUNKNOWNFLAG"]
 			msg, _ := formatReply(ic, rpl, []string{})
@@ -131,8 +198,13 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 			//return nil
 			//fmt.Println("Handling operator case")
 			//ic.isOperator = modeValue
-			rpl := fmt.Sprintf(":%s!%s@%s %s %s :%s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), im.Command, im.Params[0], im.Params[1])
-			return sendMessage(ic, rpl)
+			if modeValue {
+				return nil
+			} else {
+				rpl := fmt.Sprintf(":%s!%s@%s %s %s :%s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), im.Command, im.Params[0], im.Params[1])
+				return sendMessage(ic, rpl)
+			}
+
 		case 'a':
 			return nil
 		default:
