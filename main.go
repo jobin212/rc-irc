@@ -257,13 +257,13 @@ var (
 		"ERR_UMODEUNKNOWNFLAG": {
 			NumParams:    0,
 			Code:         501,
-			FormatText:   ":Unknown MODE Flag",
+			FormatText:   ":Unknown MODE flag",
 			UseGenerator: false,
 		},
 		"ERR_USERSDONTMATCH": {
 			NumParams:    0,
 			Code:         502,
-			FormatText:   "Cannot change mode for other users",
+			FormatText:   ":Cannot change mode for other users",
 			UseGenerator: false,
 		},
 	}

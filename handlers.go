@@ -94,6 +94,8 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 					return sendMessage(ic, msg)
 				}
 			}
+			rpl := fmt.Sprintf(":%s!%s@%s %s %s %s %s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), im.Command, im.Params[0], im.Params[1], im.Params[2])
+			sendMessageToChannel(ic, rpl, ircCh, true)
 
 		default: // invalid num params
 		}
@@ -113,12 +115,12 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 		}
 		modeChange := mode[0]
 		modeType := mode[1]
-		modeValue := false
+		//modeValue := false
 		switch modeChange {
 		case '+':
-			modeValue = true
+			//modeValue = true
 		case '-':
-			modeValue = false
+			//modeValue = false
 		default:
 			rpl, _ := replyMap["ERR_UMODEUNKNOWNFLAG"]
 			msg, _ := formatReply(ic, rpl, []string{})
@@ -126,7 +128,13 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 		}
 		switch modeType {
 		case 'o':
-			ic.isOperator = modeValue
+			//return nil
+			//fmt.Println("Handling operator case")
+			//ic.isOperator = modeValue
+			rpl := fmt.Sprintf(":%s!%s@%s %s %s :%s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), im.Command, im.Params[0], im.Params[1])
+			return sendMessage(ic, rpl)
+		case 'a':
+			return nil
 		default:
 			rpl, _ := replyMap["ERR_UMODEUNKNOWNFLAG"]
 			msg, _ := formatReply(ic, rpl, []string{})
