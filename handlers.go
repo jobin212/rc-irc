@@ -93,8 +93,10 @@ func getChannelMode(ircCh *IRCChan) (string, error) {
 
 func handleMode(ic *IRCConn, im IRCMessage) error {
 	// target can be nick or channel
+	fmt.Println("in handleMode")
 	target := im.Params[0]
 	if strings.HasPrefix(target, "#") {
+		fmt.Println("target has prefix #")
 		// dealing with channel
 		chanName := target
 		ircCh, ok := lookupChannelByName(chanName)
@@ -111,6 +113,7 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 			return sendMessage(ic, msg)
 		case 2:
 			// Modifying channel mode
+			fmt.Println("params has length 2")
 			mode := im.Params[1]
 			if userIsChannelOp(ic, ircCh) {
 				err := setChannelMode(ircCh, mode)
@@ -120,14 +123,18 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 					msg, _ = formatReply(ic, replyMap["ERR_UNKNOWNMODE"], []string{modeChar, chanName})
 				} else {
 					msg = fmt.Sprintf(":%s!%s@%s MODE %s %s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), chanName, mode)
+					sendMessageToChannel(ic, msg, ircCh, false)
 				}
 				return sendMessage(ic, msg)
 
 			} else {
-				msg, _ := formatReply(ic, replyMap["ERR_CHANOPRIVNEEDED"], []string{ic.Nick})
+				fmt.Printf("handleMode - Handling else case in len im params 2\n")
+				msg, _ := formatReply(ic, replyMap["ERR_CHANOPRIVSNEEDED"], []string{chanName})
+				fmt.Printf("formatReply returned\n")
 				return sendMessage(ic, msg)
 			}
 		case 3:
+			fmt.Println("params has length 3")
 			// Modifying channelMemberStatus
 			mode := im.Params[1]
 			nick := im.Params[2]
@@ -151,6 +158,7 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 				return sendMessage(ic, msg)
 			}
 
+			fmt.Println("setting member status mode")
 			// set Mode
 			rv, err := setMemberStatusMode(nick, mode, ircCh)
 			if err != nil {
@@ -161,6 +169,8 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 					return sendMessage(ic, msg)
 				}
 			}
+
+			fmt.Println("sending message to channel")
 			rpl := fmt.Sprintf(":%s!%s@%s %s %s %s %s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), im.Command, im.Params[0], im.Params[1], im.Params[2])
 			sendMessageToChannel(ic, rpl, ircCh, true)
 
@@ -201,7 +211,7 @@ func handleMode(ic *IRCConn, im IRCMessage) error {
 			if modeValue {
 				return nil
 			} else {
-				rpl := fmt.Sprintf(":%s!%s@%s %s %s :%s\r\n", ic.Nick, ic.User, ic.Conn.LocalAddr(), im.Command, im.Params[0], im.Params[1])
+				rpl := fmt.Sprintf(":%s %s %s :%s\r\n", ic.Nick, im.Command, im.Params[0], im.Params[1])
 				return sendMessage(ic, rpl)
 			}
 
@@ -445,6 +455,23 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) error {
 			return nil
 		}
 
+		if channel.isModerated {
+			fmt.Println("in channel isModerated block")
+			channel.Mtx.Lock()
+			defer channel.Mtx.Unlock()
+
+			senderCanTalk, ok := channel.CanTalk[ic.Nick]
+			if !(senderCanTalk && ok) {
+				fmt.Println("!senderCanTalk && ok")
+				rplName := "ERR_CANNOTSENDTOCHAN"
+				msg, _ := formatReply(ic, replyMap[rplName], []string{target})
+				err := sendMessage(ic, msg)
+				if err != nil {
+					return fmt.Errorf("handlePrivMsg - writing %s - %w", rplName, err)
+				}
+			}
+		}
+
 		msg := fmt.Sprintf(
 			":%s!%s@%s PRIVMSG %s :%s\r\n",
 			ic.Nick, ic.User, ic.Conn.RemoteAddr(), target, userMessage)
@@ -452,6 +479,7 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) error {
 			msg = msg[:510] + "\r\n"
 		}
 
+		fmt.Printf("sending message to chnanel: %s", msg)
 		sendMessageToChannel(ic, msg, channel, false)
 	} else {
 		// USER TO USER PM
@@ -722,9 +750,11 @@ func newChannel(ic *IRCConn, chanName string) *IRCChan {
 		Name:    chanName,
 		Topic:   "",
 		OpNicks: make(map[string]bool),
+		CanTalk: make(map[string]bool),
 		Members: []*IRCConn{},
 	}
 	newChan.OpNicks[ic.Nick] = true
+	newChan.CanTalk[ic.Nick] = true
 	chansMtx.Lock()
 	ircChans = append(ircChans, &newChan)
 	chansMtx.Unlock()
