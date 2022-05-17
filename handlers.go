@@ -8,6 +8,17 @@ import (
 	"sync"
 )
 
+func userCanSetTopic(ic *IRCConn, ircCh *IRCChan) bool {
+	ircCh.Mtx.Lock()
+	tr := ircCh.isTopicRestricted
+	ircCh.Mtx.Unlock()
+	if tr {
+		return userIsChannelOp(ic, ircCh)
+	}
+
+	return true
+}
+
 func setMemberStatusMode(nick, mode string, ircCh *IRCChan) (int, error) {
 	if ircCh == nil {
 		return -1, fmt.Errorf("setMemberStatusMode - ircCh is nil")
@@ -654,6 +665,11 @@ func handleTopic(ic *IRCConn, im IRCMessage) error {
 			log.Println("error sending ERR_NOTONCHANNEL reply")
 		}
 		return nil
+	}
+
+	if !userCanSetTopic(ic, ircCh) {
+		msg, _ := formatReply(ic, replyMap["ERR_CHANOPRIVSNEEDED"], []string{chanName})
+		return sendMessage(ic, msg)
 	}
 
 	ircCh.Mtx.Lock()
