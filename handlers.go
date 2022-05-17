@@ -458,9 +458,9 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) error {
 		if channel.isModerated {
 			fmt.Println("in channel isModerated block")
 			channel.Mtx.Lock()
-			defer channel.Mtx.Unlock()
-
 			senderCanTalk, ok := channel.CanTalk[ic.Nick]
+			channel.Mtx.Unlock()
+
 			if !(senderCanTalk && ok) {
 				fmt.Println("!senderCanTalk && ok")
 				rplName := "ERR_CANNOTSENDTOCHAN"
@@ -479,7 +479,7 @@ func handlePrivMsg(ic *IRCConn, im IRCMessage) error {
 			msg = msg[:510] + "\r\n"
 		}
 
-		fmt.Printf("sending message to chnanel: %s", msg)
+		fmt.Printf("sending message to channel: %s", msg)
 		sendMessageToChannel(ic, msg, channel, false)
 	} else {
 		// USER TO USER PM
