@@ -744,6 +744,7 @@ func addUserToChannel(ic *IRCConn, ircCh *IRCChan) {
 	}
 }
 
+// TODO need to clean up cantalk and opnick status when user leaves channel
 func newChannel(ic *IRCConn, chanName string) *IRCChan {
 	newChan := IRCChan{
 		Mtx:     sync.Mutex{},
